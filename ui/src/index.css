@@ -1,5 +1,27 @@
 @import url("https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,700;1,400&display=swap");
 
+/*
+ * Country flags. Windows ships no flag glyphs at all — Segoe UI Emoji leaves
+ * them out on purpose — so a regional indicator pair like U+1F1FA U+1F1F8
+ * renders as the boxed letters "US" in every browser on Windows. macOS, iOS
+ * and Android are unaffected, which is why this only shows up for some users.
+ *
+ * The Twemoji subset below covers nothing but the regional indicator block, and
+ * unicode-range keeps it that way: the browser only downloads and consults it
+ * for flag codepoints, so all other text still comes from Poppins.
+ *
+ * Self-hosted from public/ rather than a CDN, and by URL rather than an import,
+ * so a missing file degrades to the old boxed letters instead of failing a build.
+ * Source: node_modules/country-flag-emoji-polyfill/dist/ (a devDependency, kept
+ * so the file can be refreshed later).
+ */
+@font-face {
+  font-family: "Twemoji Country Flags";
+  src: url("/TwemojiCountryFlags.woff2") format("woff2");
+  unicode-range: U+1F1E6-1F1FF;
+  font-display: swap;
+}
+
 :root {
   --primary-light: #f243ff;
   --dark: #0e0e0e;
@@ -32,7 +54,9 @@
   font-family: "Montserrat", sans-serif;
   box-sizing: border-box;
   color: var(--text-color);
-  font-family: "Poppins", sans-serif;
+  /* The flag font has to lead here, not on body: this universal selector would
+     otherwise re-set font-family on every descendant and drop it again. */
+  font-family: "Twemoji Country Flags", "Poppins", sans-serif;
 }
 
 body {

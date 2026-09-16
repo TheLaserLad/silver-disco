@@ -9,7 +9,6 @@ import { MdClose } from "react-icons/md";
 import { FaGoogle, FaTwitch } from "react-icons/fa";
 import { SiTiktok } from "react-icons/si";
 import logo from "../../assets/orilogo.png";
-import demo from "../../assets/demo.mp4";
 import Footer from "../../components/Footer";
 import HowToPlay from "../../components/howtoplay";
 import HowPointsWork from "../../components/howpointsworks";
@@ -308,15 +307,17 @@ const getCountdownToRace = (timestamp: number | null) => {
       <main className="relative flex flex-col items-center justify-center flex-grow text-center px-6 py-24 overflow-hidden">
         {/* Background Video Placeholder */}
         <div className="absolute inset-0 z-0 bg-[#0a0a0a]">
-          {/* Replace src with your actual auto-looping marble track video */}
-          <video 
-            autoPlay 
-            loop 
-            muted 
+          {/* Served from ui/public/demo.mp4 rather than imported, so the build
+              still succeeds when the (large, uncommitted) video is absent —
+              a missing file just leaves the dark background showing. */}
+          <video
+            autoPlay
+            loop
+            muted
             playsInline
             className="w-full h-full object-cover opacity-30"
           >
-            <source src={demo} type="video/mp4" />
+            <source src="/demo.mp4" type="video/mp4" />
           </video>
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#111111]"></div>
         </div>

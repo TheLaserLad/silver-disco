@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import User from "../../models/User";
 import createJwt from "../../helpers/auth/createJwt";
+import cookieDomain from "../../helpers/auth/cookieDomain";
 
 export async function redirect(req: Request, res: Response): Promise<void> {
   try {
@@ -84,6 +85,7 @@ export async function redirect(req: Request, res: Response): Promise<void> {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
+      ...cookieDomain(),
     });
 
     res.cookie("userId", user._id.toString(), { httpOnly: false });

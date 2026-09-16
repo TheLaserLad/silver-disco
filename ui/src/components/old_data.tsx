@@ -166,7 +166,9 @@ const PerformanceStats = () => {
       <WeeklyPointsTrend graphData={stats.weeklyPoints} />
 
       <div className="w-full max-w-md mt-6">
-        <PointsDistribution />
+        {/* This screen's stats predate pointsOverTime — renders all zeros.
+            The live version of this component is data.tsx. */}
+        <PointsDistribution pointsOverTime={{}} />
       </div>
       <div className="w-full max-w-md mt-6">
         <FavoriteBalls />

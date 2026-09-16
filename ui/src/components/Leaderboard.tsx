@@ -6,20 +6,43 @@ import { ChevronDown, Trophy } from "lucide-react";
 import first from "../assets/1st.png";
 import second from "../assets/2nd.png";
 import third from "../assets/3rd.png";
+import ChampionshipStandings from "./ChampionshipStandings";
+import PlayerProfileModal from "./PlayerProfileModal";
 
 interface Player {
+  /** Empty for rows served from a cache filled before the field existed. */
+  userId: string;
   name: string;
   position: number;
   races: number;
   wins: number;
   points: number;
+  /** Emoji, already built server-side. Empty when the player picked no country. */
+  flag: string;
+  /** Daily participation streak; 0 once it lapses, and then not shown. */
+  currentStreak: number;
 }
 
+type Tab = "AllRaces" | "Competitions" | "HallOfChampions";
 
-const Leaderboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"AllRaces" | "Competitions">("AllRaces");
+const TAB_LABELS: Record<Tab, string> = {
+  AllRaces: "All Races",
+  Competitions: "Competitions",
+  HallOfChampions: "Hall of Champions",
+};
+
+interface LeaderboardProps {
+  /** Logged-in player, forwarded so the Competitions tab can pin their rank. */
+  userId?: string;
+  /** Which tab to open on, so the homepage widget can deep-link to the standings. */
+  initialTab?: Tab;
+}
+
+const Leaderboard: React.FC<LeaderboardProps> = ({ userId, initialTab = "AllRaces" }) => {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [leaderboardData, setLeaderboardData] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openProfile, setOpenProfile] = useState<{ userId: string; username: string } | null>(null);
 
   const [showDateOptions, setShowDateOptions] = useState(false);
   const [selectedDate, setSelectedDate] = useState("Today");
@@ -40,13 +63,10 @@ useEffect(() => {
   const fetchLeaderboard = async () => {
     try {
       setLoading(true);
-// Base URL
-      let url = `${import.meta.env.VITE_PY_SERVER_URL}/api/leaderboard?timeline=${encodeURIComponent(selectedDate)}`;
-
-      // If the selectedDate contains the range string (e.g., "2023-01-01 - 2023-01-10")
-      if (selectedDate.includes(" - ")) {
-        url = `${import.meta.env.VITE_PY_SERVER_URL}/api/leaderboard?timeline=${encodeURIComponent(selectedDate)}`;
-      }
+      // Always the all-time board. Championship standings live on the
+      // Competitions tab instead — serving them here too would show the same
+      // table twice and make the all-time ranking unreachable for a whole week.
+      const url = `${import.meta.env.VITE_PY_SERVER_URL}/api/leaderboard?timeline=${encodeURIComponent(selectedDate)}`;
 
       const res = await fetch(url);
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
@@ -55,11 +75,16 @@ useEffect(() => {
 
       if (data.data && Array.isArray(data.data)) {
         const formatted: Player[] = data.data.map((user: any, i: number) => ({
+          userId: user.userId ?? "",
           name: user.username,
           position: i + 1,             // Already sorted by backend
           races: user.races,
           wins: user.numberOfWins,
           points: user.points,
+          // Absent on rows still being served from a cache filled before these
+          // fields existed, so fall back rather than render "undefined".
+          flag: user.flag ?? "",
+          currentStreak: user.currentStreak ?? 0,
         }));
 
         setLeaderboardData(formatted);
@@ -80,22 +105,19 @@ useEffect(() => {
     <div className="bg-black min-h-screen flex flex-col items-center py-6 px-4">
       {/* Tabs */}
       <div className="flex w-full max-w-2xl bg-[#111] rounded-xl p-1 mb-6">
-        <button
-          onClick={() => setActiveTab("AllRaces")}
-          className={`flex-1 py-2 rounded-lg font-semibold text-sm transition ${
-            activeTab === "AllRaces" ? "bg-[#8a6fec] text-white" : "text-gray-400"
-          }`}
-        >
-          All Races
-        </button>
-        <button
-          onClick={() => setActiveTab("Competitions")}
-          className={`flex-1 py-2 rounded-lg font-semibold text-sm transition ${
-            activeTab === "Competitions" ? "bg-[#8a6fec] text-white" : "text-gray-400"
-          }`}
-        >
-          Competitions
-        </button>
+        {(Object.keys(TAB_LABELS) as Tab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            // min-w-0 so three labels shrink to fit a phone instead of pushing
+            // the pill out past the screen.
+            className={`flex-1 min-w-0 py-2 px-1 rounded-lg font-semibold text-sm transition truncate ${
+              activeTab === tab ? "bg-[#8a6fec] text-white" : "text-gray-400"
+            }`}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
       </div>
 
       {/* All Races Tab */}
@@ -210,9 +232,28 @@ useEffect(() => {
                     key={`${player.name}-${player.position}`}
                     className="flex justify-between items-center bg-white/5 backdrop-blur-md rounded-xl p-4 shadow-md border border-white/10 hover:bg-white/10 transition-all duration-300"
                   >
-                    <div className="flex items-center gap-3">
-                      <div>
-                        <h3 className="text-white font-semibold text-lg">{player.name}</h3>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="min-w-0">
+                        <h3 className="text-white font-semibold text-lg flex items-center gap-2 truncate">
+                          {player.flag && <span className="shrink-0">{player.flag}</span>}
+                          {player.userId ? (
+                            <button
+                              onClick={() =>
+                                setOpenProfile({ userId: player.userId, username: player.name })
+                              }
+                              className="truncate hover:text-[#8b6fed] transition"
+                            >
+                              {player.name}
+                            </button>
+                          ) : (
+                            <span className="truncate">{player.name}</span>
+                          )}
+                          {!!player.currentStreak && (
+                            <span className="text-xs text-orange-400 font-normal shrink-0">
+                              🔥 {player.currentStreak}
+                            </span>
+                          )}
+                        </h3>
                         <p className="text-sm">
                           <span className="text-[#8b6fed] font-semibold">
                             {player.position} Position
@@ -233,7 +274,10 @@ useEffect(() => {
       )}
 
       {/* Competitions Tab */}
-      {activeTab === "Competitions" && (
+      {activeTab === "Competitions" && <ChampionshipStandings userId={userId} />}
+
+      {/* Hall of Champions Tab — placeholder until the feature is built out. */}
+      {activeTab === "HallOfChampions" && (
         <div className="w-full max-w-2xl rounded-2xl">
           <div className="relative rounded-2xl p-8 shadow-lg border border-gray-800 overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-[#271552]/60 to-black"></div>
@@ -243,25 +287,25 @@ useEffect(() => {
                 <Trophy size={26} className="text-[#8b6fed]" />
               </div>
 
-              <h3 className="text-white font-bold text-xl mb-2">
-                Weekly Championship
-              </h3>
+              <h3 className="text-white font-bold text-xl mb-2">Hall of Champions</h3>
               <p className="text-gray-400 text-sm max-w-sm mb-6">
-                Every race you enter will earn points toward a weekly leaderboard
-                that resets each Monday. Champions get archived permanently.
+                A permanent record of every championship winner.
               </p>
 
               <span className="text-xs uppercase tracking-wider text-[#8b6fed] bg-[#8b6fed]/10 border border-[#8b6fed]/30 px-4 py-1.5 rounded-full">
-                Coming soon
+                In development
               </span>
-
-              <p className="text-gray-500 text-xs mt-6">
-                Keep racing — points earned now still count toward your all-time
-                ranking on the All Races tab.
-              </p>
             </div>
           </div>
         </div>
+      )}
+
+      {openProfile && (
+        <PlayerProfileModal
+          userId={openProfile.userId}
+          username={openProfile.username}
+          onClose={() => setOpenProfile(null)}
+        />
       )}
     </div>
   );

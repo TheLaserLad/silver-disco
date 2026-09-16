@@ -85,6 +85,13 @@
               <div class="label">Bonus pts per races/day</div>
             </div>
             <div class="stat-box">
+              <div class="value" style="font-size:0.95rem;">
+                {{ active.prize or "—" }}
+                {% if active.prizePoints %}<br><small>{{ active.prizePoints }} pts auto-paid</small>{% endif %}
+              </div>
+              <div class="label">Prize</div>
+            </div>
+            <div class="stat-box">
               <div class="value" style="font-size:0.95rem;">{{ active.startPretty }}<br>{{ active.endPretty }}</div>
               <div class="label">Start &rarr; end</div>
             </div>
@@ -123,6 +130,16 @@
                   <label>Daily bonus points</label>
                   <input type="number" name="dailyBonusPoints" min="0" value="{{ active.dailyBonusPoints or defaultBonusPoints }}" />
                 </div>
+                <div class="form-group">
+                  <label>Prize</label>
+                  <input type="text" name="prize" value="{{ active.prize or '' }}" placeholder="$320 gift card" />
+                </div>
+                <div class="form-group">
+                  <label>Prize points paid to the champion</label>
+                  <input type="number" name="prizePoints" min="0" value="{{ active.prizePoints or 0 }}" />
+                  <p class="hint">0 means you hand the prize out yourself. Points are credited
+                    to the champion when this week ends, so changing this now still takes effect.</p>
+                </div>
                 <p class="hint">The start and end dates of a running week cannot be changed.</p>
                 <button type="submit" class="save-btn">Save Changes</button>
               </form>
@@ -154,6 +171,7 @@
               <th>Start mode</th>
               <th>Expected start</th>
               <th>Bonus</th>
+              <th>Prize</th>
               <th>Order</th>
               <th>Actions</th>
             </tr>
@@ -199,6 +217,15 @@
                             <label>Daily bonus points</label>
                             <input type="number" name="dailyBonusPoints" min="0" value="{{ c.dailyBonusPoints or defaultBonusPoints }}" />
                           </div>
+                          <div class="form-group">
+                            <label>Prize</label>
+                            <input type="text" name="prize" value="{{ c.prize or '' }}" placeholder="$320 gift card" />
+                          </div>
+                          <div class="form-group">
+                            <label>Prize points paid to the champion</label>
+                            <input type="number" name="prizePoints" min="0" value="{{ c.prizePoints or 0 }}" />
+                            <p class="hint">0 means you hand the prize out yourself.</p>
+                          </div>
                           <button type="submit" class="save-btn">Save Changes</button>
                         </form>
                       </div>
@@ -208,6 +235,10 @@
                   <td>{{ c.startMode|replace("_", " ")|title }}</td>
                   <td>{{ c.eta }}</td>
                   <td>+{{ c.dailyBonusPoints or defaultBonusPoints }} / {{ c.dailyBonusRaces or defaultBonusRaces }} races</td>
+                  <td>
+                    {{ c.prize or "—" }}
+                    {% if c.prizePoints %}<br><small>{{ c.prizePoints }} pts auto-paid</small>{% endif %}
+                  </td>
                   <td style="white-space: nowrap;">
                     <form method="post" action="/api/admin/championships/reorder" class="inline-form">
                       <input type="hidden" name="championship_id" value="{{ c.id }}" />
@@ -232,7 +263,7 @@
                 </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="8" class="empty">Queue is empty — nothing will start after the current championship ends.</td></tr>
+              <tr><td colspan="9" class="empty">Queue is empty — nothing will start after the current championship ends.</td></tr>
             {% endif %}
           </tbody>
         </table>
@@ -281,6 +312,19 @@
               <label>Daily bonus points</label>
               <input type="number" name="dailyBonusPoints" min="0" value="{{ defaultBonusPoints }}" />
             </div>
+            <div class="form-group">
+              <label>Prize</label>
+              <input type="text" name="prize" placeholder="$320 gift card" />
+              <p class="hint">Free text, shown on the homepage widget. Anything goes:
+                &ldquo;$320 gift card&rdquo;, &ldquo;PS5&rdquo;, &ldquo;20 points&rdquo;.</p>
+            </div>
+            <div class="form-group">
+              <label>Prize points paid to the champion</label>
+              <input type="number" name="prizePoints" min="0" value="0" />
+              <p class="hint">Leave at 0 for a prize you hand out yourself (gift card, merch).
+                Set it only when the prize <em>is</em> points &mdash; the champion is then
+                credited automatically when the week ends.</p>
+            </div>
             <button type="submit" class="create-btn">ADD TO QUEUE</button>
           </form>
         </div>
@@ -303,6 +347,7 @@
               <th>🥈 Second</th>
               <th>🥉 Third</th>
               <th>Winning score</th>
+              <th>Prize</th>
               <th>Players</th>
               <th>Ended</th>
             </tr>
@@ -321,12 +366,16 @@
                   <td>{{ c.secondPlaceUsername or "—" }}</td>
                   <td>{{ c.thirdPlaceUsername or "—" }}</td>
                   <td>{{ c.winningScore or 0 }}</td>
+                  <td>
+                    {{ c.prize or "—" }}
+                    {% if c.prizeAwarded %}<br><small>{{ c.prizeAwarded.points }} pts paid</small>{% endif %}
+                  </td>
                   <td>{{ c.participantCount or 0 }}</td>
                   <td>{{ c.endPretty }}</td>
                 </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="8" class="empty">No championships have finished yet</td></tr>
+              <tr><td colspan="9" class="empty">No championships have finished yet</td></tr>
             {% endif %}
           </tbody>
         </table>

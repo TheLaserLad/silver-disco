@@ -6,7 +6,6 @@ import {
   Search,
   Bell,
   Edit2,
-  User,
   Flag,
   Clock,
   Award,
@@ -15,11 +14,14 @@ import {
   Globe,
   Video,
   MessageSquare,
+  Flame,
 } from "lucide-react";
 
-import EditProfileModal from "./EditProfileModal";
+import EditProfileModal, { type ProfileUpdate } from "./EditProfileModal";
 import NotificationSettings from "./NotificationSettings";
 import SecuritySettings from "./SecuritySettings";
+import { COUNTRIES } from "../helpers/country/countries";
+import { avatarUrl } from "../helpers/avatar/avatarUrl";
 import axios from "axios";
 
 
@@ -42,6 +44,8 @@ interface UserData {
   _id: string;
   username?: string;
   email?: string;
+  /** Either an uploaded data URI or the avatar URL an OAuth login supplied. */
+  pfp?: string;
   clientToken?: string;
   connectedAccounts?: {
     google: boolean;
@@ -59,16 +63,59 @@ interface StatsData {
   weeklyPoints: { name: string; points: number }[];
 }
 
+/** Subset of /api/player/{id}/profile that this screen renders. */
+interface ProfileData {
+  identity: {
+    country: string;
+    flag: string;
+  };
+  currentStatus: {
+    weeklyRank: number;
+    weeklyPoints: number;
+    currentStreak: number;
+    longestStreak: number;
+    championshipActive: boolean;
+  };
+}
+
 
 const AccountScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState("Profile");
   const [showModal, setShowModal] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [stats, setStats] = useState<Stat[]>([]);
- 
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [savingCountry, setSavingCountry] = useState(false);
+
   const [loading, setLoading] = useState(true);
 
   const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+
+  // Country drives the flag shown next to the username on every leaderboard.
+  // No login provider supplies it, so the player picks it here.
+  const saveCountry = async (code: string) => {
+    if (!code || !userData) return;
+    setSavingCountry(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_PY_SERVER_URL}/api/user/country`, {
+        method: "POST",
+        // Sends the session cookie so the API can verify who is being edited.
+        credentials: "include",
+        body: new URLSearchParams({ userId: userData._id, country: code }),
+      });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      const json = await res.json();
+      setProfile((prev) =>
+        prev
+          ? { ...prev, identity: { ...prev.identity, country: json.country, flag: json.flag } }
+          : prev
+      );
+    } catch (err) {
+      console.error("Failed to save country:", err);
+    } finally {
+      setSavingCountry(false);
+    }
+  };
   const logout = async () => {
     try {
       await axios.post(`${serverUrl}/unrestricted/logout`, {}, { withCredentials: true });
@@ -96,20 +143,31 @@ const AccountScreen: React.FC = () => {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ email: userJson.user._id }),
       });
       const statsJson: StatsData = await statsRes.json();
 
-      // Map stats to frontend Stat[]
+      // Map stats to frontend Stat[]. Note statsJson.streak is winningStreak —
+      // consecutive *wins*, not the daily-participation streak below.
       setStats([
         { icon: Flag, value: statsJson.totalRaces ?? 0, label: "Races" },
         { icon: Clock, value: statsJson.points ?? 0, label: "Points", color: "text-green-400" },
-        { icon: Award, value: statsJson.streak ?? 0, label: "Streak" },
+        { icon: Award, value: statsJson.streak ?? 0, label: "Win Streak" },
         { icon: Trophy, value: statsJson.totalWins ?? 0, label: "Wins" },
       ]);
 
+      // Daily streak + weekly championship standing. Fetched separately so a
+      // failure here still leaves the stats above rendered.
+      try {
+        const profileRes = await fetch(
+          `${import.meta.env.VITE_PY_SERVER_URL}/api/player/${userJson.user._id}/profile`
+        );
+        if (profileRes.ok) setProfile(await profileRes.json());
+      } catch (err) {
+        console.error("Failed to fetch player profile:", err);
+      }
 
-      
     } catch (err) {
       console.error("Failed to fetch user or stats:", err);
     } finally {
@@ -234,8 +292,14 @@ const AccountScreen: React.FC = () => {
             </div>
 
             <div className="bg-[#1c1c22] p-4 rounded-xl flex items-center mb-4">
-              <div className="w-12 h-12 rounded-full bg-purple-600 flex items-center justify-center mr-4">
-                <User size={24} />
+              {/* The purple fill stays as the backdrop: it is what shows if the
+                  avatar itself fails to load. */}
+              <div className="w-12 h-12 rounded-full bg-purple-600 mr-4 overflow-hidden shrink-0">
+                <img
+                  src={avatarUrl(userData._id, userData.pfp)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div>
                 <p className="text-lg font-semibold">{userData.username}</p>
@@ -243,6 +307,39 @@ const AccountScreen: React.FC = () => {
               </div>
               <p className="ml-auto text-sm text-gray-500 hidden sm:block">ID: {userData.clientToken}</p>
             </div>
+
+            {/* Country — shown as a flag beside your name on every leaderboard */}
+            {profile && (
+              <div className="bg-[#1c1c22] p-4 rounded-xl mb-4">
+                <label className="text-sm font-medium text-gray-400 block mb-2">
+                  Country
+                </label>
+                <div className="flex items-center space-x-3">
+                  <span className="text-2xl w-8 text-center shrink-0">
+                    {profile.identity.flag || "🏳️"}
+                  </span>
+                  {/* min-w-0 is load-bearing: a <select> is as wide as its
+                      longest option ("British Indian Ocean Territory"), and a
+                      flex item defaults to min-width:auto, so without this it
+                      refuses to shrink and overflows the card on a phone. */}
+                  <select
+                    value={profile.identity.country || ""}
+                    disabled={savingCountry}
+                    onChange={(e) => saveCountry(e.target.value)}
+                    className="flex-1 min-w-0 bg-[#2b2b36] text-white p-2 rounded-lg border border-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-600 disabled:opacity-50"
+                  >
+                    <option value="" disabled>
+                      Select your country
+                    </option>
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
             {/* Stats */}
             { (
@@ -267,9 +364,43 @@ const AccountScreen: React.FC = () => {
               </div>
 
             )}
+
+            {/* Daily participation streak — one race on a calendar day keeps it alive */}
+            {profile && (
+              <div className="bg-[#1c1c22] p-4 rounded-xl mt-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Flame size={20} className="text-orange-400" />
+                    <div>
+                      <p className="text-lg font-semibold text-white">
+                        {profile.currentStatus.currentStreak} Days
+                      </p>
+                      <p className="text-xs text-gray-400">Current streak</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold text-white">
+                      {profile.currentStatus.longestStreak} Days
+                    </p>
+                    <p className="text-xs text-gray-400">Longest streak</p>
+                  </div>
+                </div>
+
+                {profile.currentStatus.championshipActive && (
+                  <div className="flex items-center justify-between border-t border-gray-800 mt-3 pt-3">
+                    <p className="text-xs text-gray-400">This week's championship</p>
+                    <p className="text-sm text-[#8b6fed] font-semibold">
+                      {profile.currentStatus.weeklyPoints} pts
+                      {profile.currentStatus.weeklyRank > 0 &&
+                        ` • rank #${profile.currentStatus.weeklyRank}`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          
+
 
           {/* Connected Accounts */}
           <div className="mb-10 mt-6">
@@ -316,7 +447,17 @@ const AccountScreen: React.FC = () => {
       {activeTab === "Security" && <SecuritySettings id={userData._id} />}
 
       {/* Edit Profile Modal */}
-      {showModal && <EditProfileModal onClose={() => setShowModal(false)} onUpdate={() => setShowModal(false)} userData={userData} />}
+      {showModal && (
+        <EditProfileModal
+          onClose={() => setShowModal(false)}
+          // Merge rather than refetch: the modal already returns the saved
+          // values, so the card and avatar update without a round trip.
+          onUpdate={(updated: ProfileUpdate) =>
+            setUserData((prev) => (prev ? { ...prev, ...updated } : prev))
+          }
+          userData={userData}
+        />
+      )}
     </div>
   );
 };

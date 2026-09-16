@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import JoinRaceModal from "../components/JoinRaceModal";
+import ChampionshipWidget from "./ChampionshipWidget";
 import leadingicon from "../assets/Leading-icon.png";
 import contact from "../assets/contact.png";
 import gift from "../assets/gift.png";
@@ -42,6 +43,8 @@ const ballImages: { [key: string]: string } = {
 
 interface RaceDashboardProps {
   username: string; // Optional because data might still be loading
+  /** Switches the page to the Winners tab — the dashboard does not own the tabs. */
+  onViewStandings?: () => void;
 }
 
 function getNextRaceStartTime(createdAt: number, timerTillNextRace?: number): string {
@@ -88,7 +91,7 @@ const ProgressBar: React.FC<{ time: number; maxTime: number }> = ({ time, maxTim
   );
 };
 
-const RaceDashboard: React.FC<RaceDashboardProps> = ({ username }) => {
+const RaceDashboard: React.FC<RaceDashboardProps> = ({ username, onViewStandings }) => {
   const [showModal, setShowModal] = useState(false);
   const [recentRaces, setRecentRaces] = useState<any[]>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'me'>('all');  
@@ -469,61 +472,8 @@ useEffect(() => {
           )}
         </div>
 
-        {/* ----- Championship ----- */}
-         <div className="relative rounded-2xl p-4 shadow border border-gray-800 flex flex-col justify-between overflow-hidden">
-  {/* 🎨 Updated gradient — 20% purple then fade to black */}
-  <div className="absolute inset-0 bg-[linear-gradient(to_right,_rgba(69,38,140,0.5)_0%,_rgba(69,38,140,0.5)_20%,_rgba(0,0,0,1)_100%)]"></div>
-
-  <div className="relative z-10">
-    <h2 className="text-sm font-semibold mb-1 text-white">
-      championships 
-    </h2>
-    <p className="text-xs text-gray-400 mb-3">Currently Unavailable</p>
-
-    {/* Info boxes 
-    <div className="grid grid-cols-2 gap-2 text-sm mb-4">
-      {/* 🗓 Left box (Days Left) 
-      <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-white/10 flex flex-col items-start text-left">
-        <div className="flex items-center justify-start space-x-2 mb-1">
-          <img
-            src={calendar}
-            alt="Calendar Icon"
-            className="w-5 h-5 object-contain"
-          />
-          <span className="text-base font-semibold text-white">12 Days</span>
-        </div>
-        <span className="text-gray-400 text-xs ml-6">Left</span>
-      </div>
-      {/* 👥 Participants 
-      <div className="bg-white/5 backdrop-blur-md p-3 rounded-xl border border-white/10 flex flex-col items-start text-left">
-        <div className="flex items-center justify-start space-x-2 mb-1">
-          <img
-            src={contact}
-            alt="Contact Icon"
-            className="w-5 h-5 object-contain"
-          />
-          <span className="text-base font-semibold text-white">47</span>
-        </div>
-        <span className="text-gray-400 text-xs ml-6">Participants</span>
-      </div>
-
-      {/* 🏆 Gift card prize 
-      <div className="col-span-2 bg-white/5 backdrop-blur-md p-3 rounded-xl border border-white/10 flex flex-col items-start text-left">
-        <div className="flex items-center justify-start space-x-2 mb-1">
-          <img
-            src={cup}
-            alt="Trophy Icon"
-            className="w-5 h-5 object-contain"
-          />
-          <span className="text-base font-semibold text-white">$320</span>
-        </div>
-        <span className="text-gray-400 text-xs ml-6">Gift card prize</span>
-      </div>
-    </div>*/}
-  </div>
-</div>
-
-
+        {/* ----- Championship (Feature 6) ----- */}
+        <ChampionshipWidget onViewAll={onViewStandings} />
 
 </div>
 

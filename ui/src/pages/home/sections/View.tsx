@@ -27,8 +27,16 @@ const PinballRaceHome: React.FC = () => {
   // ✅ User state for header props
   const [user, setUser] = useState<UserState>({});
 
+  // Which sub-tab the Winners screen opens on. Tapping Winners in the footer
+  // always lands on the all-time table; only the championship widget deep-links
+  // past it to the live standings.
+  const [leaderboardTab, setLeaderboardTab] = useState<"AllRaces" | "Competitions">(
+    "AllRaces"
+  );
+
   const handleTabChange = (tab: ActiveTab) => {
     setActiveTab(tab);
+    if (tab === "Winners") setLeaderboardTab("AllRaces");
     localStorage.setItem("activeTab", tab); // ✅ Save tab choice
     console.log(`Navigation changed to: ${tab}`);
   };
@@ -79,7 +87,13 @@ const PinballRaceHome: React.FC = () => {
         {activeTab === "Home" && (
           <>
             <LiveStreamCard />
-            <RaceDashboard username={user.username || ""} />
+            <RaceDashboard
+              username={user.username || ""}
+              onViewStandings={() => {
+                handleTabChange("Winners");
+                setLeaderboardTab("Competitions");
+              }}
+            />
             <button
             className="w-full bg-[#121212] text-white font-semibold py-2 rounded-3xl border border-[#522cab] hover:border-blue-600 hover:bg-[#0a0a0a] transition shadow-[0_0_15px_rgba(82,44,171,0.3)]"
             onClick={() => setIsRaceModalOpen(true)}
@@ -93,7 +107,9 @@ const PinballRaceHome: React.FC = () => {
         )}
           </>
         )}
-        {activeTab === "Winners" && <Leaderboard />}
+        {activeTab === "Winners" && (
+          <Leaderboard userId={user._id} initialTab={leaderboardTab} />
+        )}
         {activeTab === "Data" && <Data />}
         {activeTab === "Profile" && <AccountScreen />}
       </main>

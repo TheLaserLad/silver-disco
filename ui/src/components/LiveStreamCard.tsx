@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import demo from "../assets/demo.mp4";
+import JoinRaceModal from "../components/JoinRaceModaloffline";
 
 const LiveStreamCard: React.FC = () => {
   const [isLive, setIsLive] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
+  const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
 
   const serverUrl = import.meta.env.VITE_PY_SERVER_URL || "http://localhost:3000";
 
@@ -59,7 +60,8 @@ const LiveStreamCard: React.FC = () => {
             />
           ) : (
             <video
-              src={demo}
+              // Served from ui/public/, not bundled — see the same note in Login.tsx
+              src="/demo.mp4"
               autoPlay
               loop
               muted
@@ -79,8 +81,27 @@ const LiveStreamCard: React.FC = () => {
               title="Watch live on TikTok"
             />
           )}
+
+          {/* Floating Action Button inside the video container.
+              Sits above the live click-through overlay (z-20), and the wrapper
+              is pointer-events-none so only the button itself is clickable. */}
+          <div className="absolute bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
+            <button
+              onClick={() => setIsRaceModalOpen(true)}
+              className="pointer-events-auto bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-6 rounded-full shadow-[0_0_15px_rgba(147,51,234,0.5)] transition-all transform hover:scale-105"
+            >
+              Play On-Demand Race
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Rendered outside the card so the card's overflow-hidden cannot clip it */}
+      {isRaceModalOpen && (
+        <JoinRaceModal
+          onClose={() => setIsRaceModalOpen(false)}
+        />
+      )}
     </>
   );
 };

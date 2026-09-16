@@ -20,6 +20,7 @@ from typing import Optional, List, Dict, Any
 
 from urllib3 import request
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import FastAPI, Request, Form, Response, HTTPException, Query, Depends, UploadFile, File, BackgroundTasks,status 
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,7 +41,9 @@ from utils.utils import router as utils_router
 from utils.lp import router as lp_router
 from utils.yolo_model import yolo_model
 import championship
-from championship import router as championship_router
+from championship import router as championship_router, country_flag, effective_streak, utc_now
+from auth import require_self
+from avatars import avatar_svg
 
 
 load_dotenv()
@@ -1395,6 +1398,42 @@ async def api_new_prize(request: Request, title: str = Form(...), description: s
         "createdAt": datetime.utcnow()
     })
     return RedirectResponse("/dashboard", status_code=303)
+@app.get("/api/avatar/{user_id}")
+async def api_avatar(user_id: str):
+    """
+    A generated avatar for a player who has not set one.
+
+    Exists for clients that get their pfp from the Node API (the account screen
+    reads /api/user/me there, and that payload has no fallback applied) — they
+    can point an <img> straight at this instead of reimplementing the drawing.
+    Payloads built by this service inline the same image, so they need no extra
+    request; see avatars.py.
+
+    Deliberately unauthenticated: it exposes only a username's initials, which
+    are already on every public leaderboard, and gating it would mean avatars
+    vanish on exactly the pages that render them for logged-out visitors.
+
+    Returns an avatar even for an id that matches no user, rather than 404ing —
+    a broken image icon in a leaderboard row is worse than a generic silhouette.
+    """
+    name = None
+    try:
+        user = await db.users.find_one({"_id": ObjectId(user_id)}, {"username": 1})
+        if user:
+            name = user.get("username")
+    except Exception:
+        # A malformed id is a caller mistake, not a reason to fail the render.
+        pass
+
+    return Response(
+        content=avatar_svg(user_id, name),
+        media_type="image/svg+xml",
+        # Deterministic output, so it caches hard. A day is short enough that a
+        # rename catches up on its own without a cache-busting query param.
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/api/users/all")
 async def api_get_all_users(request: Request):
     await require_login(request)
@@ -1415,13 +1454,17 @@ def safe_ts(value):
         return None
 
 
-@app.post("/api/user/stats") 
-async def user_stats(user_email_data: UserEmail):
+@app.post("/api/user/stats")
+async def user_stats(request: Request, user_email_data: UserEmail):
     """
     Returns user stats for dashboard based on email provided in the request body.
+
+    Despite the field name, `email` carries the user's _id. Only the account
+    holder may read their own stats.
     """
     email = user_email_data.email
-    
+    await require_self(request, email)
+
     # Retrieve user based on email instead of cookie/userId
     user = await db.users.find_one({"_id": ObjectId(email)})
     
@@ -1530,8 +1573,9 @@ async def user_stats(user_email_data: UserEmail):
     }
 
 @app.get("/api/user/notifications/{user_id}")
-async def get_notifications(user_id: str):
+async def get_notifications(request: Request, user_id: str):
     """Fetches user notification settings. Returns defaults if not set."""
+    await require_self(request, user_id)
     try:
         user = await db.users.find_one({"_id": ObjectId(user_id)})
         if not user:
@@ -1553,8 +1597,9 @@ async def get_notifications(user_id: str):
 
 
 @app.post("/api/user/notifications")
-async def update_notifications(data: NotificationSettingsUpdate):
+async def update_notifications(request: Request, data: NotificationSettingsUpdate):
     """Updates or creates the notification settings for a user."""
+    await require_self(request, data.userId)
     try:
         user_id = ObjectId(data.userId)
         user = await db.users.find_one({"_id": user_id})
@@ -1676,6 +1721,10 @@ async def compute_leaderboard(start_ts, end_ts,timeline_key):
 
     new_data = []
 
+    # One instant for the whole pass, so a rebuild that straddles midnight does
+    # not credit some players against today and others against yesterday.
+    now = utc_now()
+
     for user in users:
         username = user.get("username", "Unknown")
 
@@ -1697,10 +1746,21 @@ async def compute_leaderboard(start_ts, end_ts,timeline_key):
         if total_points == 0:
             continue
         new_data.append({
+            # userId is what makes the name clickable — the profile popup is
+            # keyed on it, and usernames are not guaranteed unique.
+            "userId": str(user["_id"]),
             "username": username,
             "numberOfWins": total_wins,
             "races": total_races,
-            "points": total_points
+            "points": total_points,
+            # The flag and streak the championship standings show beside a name.
+            # This board reads the same user documents, so carry them here too
+            # rather than leaving the two boards looking like different products.
+            # Both are resolved as the cache is filled, which bounds how stale
+            # they can get to CACHE_REFRESH_MINUTES.
+            "country": user.get("country", ""),
+            "flag": country_flag(user.get("country")),
+            "currentStreak": effective_streak(user, now),
         })
 
     # ---- Sort by points only (DESC) ----
@@ -1775,12 +1835,61 @@ def get_participant_by_ball(participants: List[Dict], ball_num: str):
             return p
     return None
 
+async def _decorate_finishers(races: List[Dict[str, Any]]) -> None:
+    """
+    Add each top-3 finisher's flag and streak to `races`, in place.
+
+    A game document snapshots a participant's name and ball at join time and
+    nothing else, so the country and streak have to be read from the user
+    documents. Every finisher across every race is resolved in one query — doing
+    it per row would turn a 50-race history into 150 round trips.
+
+    A finisher whose user record is gone (or whose id was never recorded) is
+    left with an empty flag and a zero streak rather than dropped, so the race
+    still lists who actually placed.
+    """
+    ids = {
+        f["userId"]
+        for race in races
+        for f in race.get("topFinishers", [])
+        if f.get("userId")
+    }
+
+    lookup: Dict[str, Dict[str, Any]] = {}
+    if ids:
+        oids = []
+        for raw in ids:
+            try:
+                oids.append(ObjectId(raw))
+            except (InvalidId, TypeError):
+                continue  # malformed participant id: just goes undecorated
+
+        if oids:
+            now = utc_now()
+            cursor = db.users.find(
+                {"_id": {"$in": oids}},
+                {"country": 1, "currentStreak": 1, "lastActiveDate": 1},
+            )
+            async for u in cursor:
+                lookup[str(u["_id"])] = {
+                    "flag": country_flag(u.get("country")),
+                    "currentStreak": effective_streak(u, now),
+                }
+
+    for race in races:
+        for f in race.get("topFinishers", []):
+            found = lookup.get(f.get("userId"), {})
+            f["flag"] = found.get("flag", "")
+            f["currentStreak"] = found.get("currentStreak", 0)
+
+
 @app.post("/api/user/race-history")
-async def get_race_history(req: HistoryRequest):
+async def get_race_history(request: Request, req: HistoryRequest):
     """
     Fetches game history for a specific user.
     Returns data formatted for the RaceHistory.jsx component.
     """
+    await require_self(request, req.userId)
     
     # 1. Build Query
     # We look for games where 'participants.userId' matches the requested userId
@@ -1898,6 +2007,7 @@ async def get_race_history(req: HistoryRequest):
                 w_suffix = {1: "st", 2: "nd", 3: "rd"}.get(rank, "th")
 
                 top_finishers.append({
+                    "userId": str(p.get("userId") or ""),
                     "name": w_name,
                     "position": f"{rank}{w_suffix}",
                     "time": duration_str,
@@ -1958,6 +2068,7 @@ async def get_race_history(req: HistoryRequest):
                     
                     # 3. Append ONLY the user to topFinishers since they are ranked
                     top_finishers.append({
+                        "userId": str(user_data.get("userId") or ""),
                         "name": "You",
                         "position": user_position_str,
                         "time": duration_str,
@@ -1981,6 +2092,8 @@ async def get_race_history(req: HistoryRequest):
 
     # sort races_data by startTimestamp in descending order
     races_data.sort(key=lambda x: x["startTimestamp"], reverse=True)
+    # After both the online and offline passes, so one query covers every race.
+    await _decorate_finishers(races_data)
     return races_data
 
 @app.get("/api/leaderboard/recent")
@@ -2190,17 +2303,27 @@ async def submit_rankings(rankings: Dict[str, int]):
     return {"status": "success", "message": "Rankings received"}
 
 
-@app.delete("/api/account/deletion?user_id={ID}")
-def account_deletion(user_id: str):
-    # add a tag in user_id where deletion_requested: true deletion_requested_at: timestamp
+@app.delete("/api/account/deletion")
+async def account_deletion(request: Request, user_id: str = Query("")):
+    """
+    Flags the caller's own account for deletion.
+
+    The route previously embedded a query string in the path
+    ("/api/account/deletion?user_id={ID}"), which FastAPI matches literally, so
+    it was unreachable; it was also a sync def calling motor without awaiting,
+    so the update never ran even if it had been reached.
+    """
+    authenticated_id = await require_self(request, user_id)
     try:
-        db.users.update_one(
-            {"_id": ObjectId(user_id)},
+        await db.users.update_one(
+            {"_id": ObjectId(authenticated_id)},
             {"$set": {"deletion_requested": True, "deletion_requested_at": int(datetime.utcnow().timestamp())}}
         )
     except Exception as e:
         return {"status": "error", "message": str(e)}
-    
+    return {"status": "success"}
+
+
 @app.get("/is_live")
 async def is_admin_live():
     """

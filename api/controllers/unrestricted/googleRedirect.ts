@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import User from "../../models/User";
 import createJwt from "../../helpers/auth/createJwt";
+import cookieDomain from "../../helpers/auth/cookieDomain";
 
 export async function googleRedirect(req: Request, res: Response): Promise<void> {
   if (!("error" in req.query) && "code" in req.query && "state" in req.query) {
@@ -79,6 +80,7 @@ export async function googleRedirect(req: Request, res: Response): Promise<void>
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
+        ...cookieDomain(),
       });
 
       res.cookie("userId", user._id.toString(), { httpOnly: false });

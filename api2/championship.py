@@ -36,6 +36,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import UpdateOne, ASCENDING, DESCENDING
 from dotenv import load_dotenv
 
+from auth import require_self
+from avatars import avatar_for
+
 load_dotenv()
 
 router = APIRouter()
@@ -211,11 +214,64 @@ async def start_championship(champ: Dict[str, Any], start_dt: datetime, end_dt: 
           f"{start_dt.isoformat()} → {end_dt.isoformat()}")
 
 
+async def _award_prize_points(
+    champ: Dict[str, Any], winner: Dict[str, Any], now: datetime
+) -> Optional[Dict[str, Any]]:
+    """
+    Pay a points prize to the champion.
+
+    The prize text itself is free-form and purely cosmetic ("$320 gift card") —
+    only prizePoints is machine-actionable. When an admin sets it, a prize of
+    "20 points" is actually credited instead of being a label someone has to
+    honour by hand.
+
+    The points go onto users.points[] because that array is what both the
+    all-time leaderboard and the profile career total are summed from. Nothing
+    is pushed onto racesPlayed[]: the legacy stats endpoint infers a finishing
+    position from the size of a points entry whose timestamp matches a race
+    entry, so a prize masquerading as a race would show up as a phantom win.
+    """
+    points = int(champ.get("prizePoints", 0) or 0)
+    if points <= 0 or not winner.get("userId"):
+        return None
+    if champ.get("prizeAwardedAt"):
+        return None  # already paid — never double-pay if this is somehow re-run
+
+    try:
+        uid = ObjectId(winner["userId"])
+    except (InvalidId, TypeError):
+        return None
+
+    await db.users.update_one(
+        {"_id": uid},
+        {
+            "$push": {"points": {
+                "points": points,
+                "timestamp": int(now.timestamp()),   # seconds — the legacy format
+                "source": "championship_prize",
+                "championshipId": str(champ["_id"]),
+            }},
+            "$inc": {"totalPoints": points},
+        },
+    )
+
+    print(f"🎁 Prize +{points} pts to champion {winner.get('username')}")
+    return {
+        "userId": winner["userId"],
+        "username": winner.get("username"),
+        "points": points,
+        "awardedAt": to_ms(now),
+    }
+
+
 async def end_championship(champ: Dict[str, Any], reason: str = "scheduled"):
     """
     Crown the winner, write the permanent archive, fold results into player
     career stats, then clear the denormalised weekly mirror on users.
-    Lifetime statistics (users.points[] etc.) are deliberately untouched.
+
+    Lifetime statistics (users.points[] etc.) are otherwise untouched — the one
+    exception is a configured points prize, which is credited to the champion
+    here because that is the moment the week's result becomes final.
     """
     champ_id = champ["_id"]
     now = utc_now()
@@ -240,11 +296,13 @@ async def end_championship(champ: Dict[str, Any], reason: str = "scheduled"):
             "userId": e.get("userId"),
             "username": e.get("username"),
             "country": e.get("country", ""),
-            "pfp": e.get("pfp", ""),
+            "pfp": avatar_for(e.get("userId"), e.get("pfp"), e.get("username")),
             "score": int(e.get("weeklyPoints", 0)),
         }
 
     first, second, third = podium(0), podium(1), podium(2)
+
+    prize_awarded = await _award_prize_points(champ, first, now)
 
     result = {
         "championUserId": first.get("userId"),
@@ -259,14 +317,18 @@ async def end_championship(champ: Dict[str, Any], reason: str = "scheduled"):
         "participantCount": len(entries),
     }
 
-    await db.championships.update_one(
-        {"_id": champ_id},
-        {"$set": {**result,
-                  "status": STATUS_COMPLETED,
-                  "endedAt": to_ms(now),
-                  "endReason": reason,
-                  "updatedAt": to_ms(now)}},
-    )
+    closing: Dict[str, Any] = {
+        **result,
+        "status": STATUS_COMPLETED,
+        "endedAt": to_ms(now),
+        "endReason": reason,
+        "updatedAt": to_ms(now),
+    }
+    if prize_awarded:
+        closing["prizeAwarded"] = prize_awarded
+        closing["prizeAwardedAt"] = prize_awarded["awardedAt"]
+
+    await db.championships.update_one({"_id": champ_id}, {"$set": closing})
 
     # Feature 8 — the separate, permanent history table.
     await db.championship_history.update_one(
@@ -283,6 +345,11 @@ async def end_championship(champ: Dict[str, Any], reason: str = "scheduled"):
             "champion": first,
             "secondPlace": second,
             "thirdPlace": third,
+            # Frozen onto the archive so the Hall of Champions can still say what
+            # the week was played for, even after the championship is edited.
+            "prize": champ.get("prize", ""),
+            "prizePoints": int(champ.get("prizePoints", 0) or 0),
+            "prizeAwarded": prize_awarded,
             **result,
         }},
         upsert=True,
@@ -660,7 +727,7 @@ async def _decorate(
             "username": e.get("username", "Unknown"),
             "country": e.get("country", ""),
             "flag": country_flag(e.get("country")),
-            "pfp": e.get("pfp", ""),
+            "pfp": avatar_for(e.get("userId"), e.get("pfp"), e.get("username")),
             "weeklyPoints": int(e.get("weeklyPoints", 0)),
             "races": int(e.get("racesPlayed", 0)),
             "wins": int(e.get("wins", 0)),
@@ -696,6 +763,9 @@ def _champ_public(champ: Dict[str, Any]) -> Dict[str, Any]:
         "endDate": champ.get("endDate"),
         "dailyBonusRaces": int(champ.get("dailyBonusRaces", DEFAULT_BONUS_RACES)),
         "dailyBonusPoints": int(champ.get("dailyBonusPoints", DEFAULT_BONUS_POINTS)),
+        # Free text for display; prizePoints is the part that actually pays out.
+        "prize": champ.get("prize", ""),
+        "prizePoints": int(champ.get("prizePoints", 0) or 0),
     }
 
 
@@ -819,9 +889,40 @@ async def leaderboard_active(timeline: str = Query("All time")):
 
 
 @router.get("/api/championship/history")
-async def championship_history(limit: int = Query(50, ge=1, le=200)):
-    """Feature 5 — Hall of Champions."""
+async def championship_history(
+    limit: int = Query(50, ge=1, le=200),
+    userId: Optional[str] = Query(None),
+):
+    """
+    Feature 5 — Hall of Champions.
+
+    With `userId`, each archived championship also carries `you`: where that
+    player finished. Resolved in one query across the whole page of history
+    rather than one per championship, so opening the Competitions tab costs the
+    same whether a player has one past championship or fifty.
+
+    Unauthenticated on purpose — it reads the same final placings the archive
+    already publishes, and requiring a session would blank the list for a
+    logged-out visitor browsing past weeks.
+    """
     docs = await db.championship_history.find({}).sort("weekNumber", DESCENDING).limit(limit).to_list(None)
+
+    mine: Dict[str, Dict[str, Any]] = {}
+    if userId and docs:
+        champ_ids = [d["championshipId"] for d in docs if d.get("championshipId")]
+        if champ_ids:
+            cursor = db.championship_entries.find(
+                {"championshipId": {"$in": champ_ids}, "userId": userId}
+            )
+            async for e in cursor:
+                mine[str(e["championshipId"])] = {
+                    # finalRank is frozen when a championship ends. currentRank is
+                    # the fallback for one archived before that field existed.
+                    "rank": int(e.get("finalRank") or e.get("currentRank") or 0),
+                    "points": int(e.get("weeklyPoints", 0)),
+                    "races": int(e.get("racesPlayed", 0)),
+                    "wins": int(e.get("wins", 0)),
+                }
 
     def side(p: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not p or not p.get("userId"):
@@ -842,6 +943,11 @@ async def championship_history(limit: int = Query(50, ge=1, le=200)):
         "runnerUpScore": d.get("runnerUpScore", 0),
         "thirdPlaceScore": d.get("thirdPlaceScore", 0),
         "participantCount": d.get("participantCount", 0),
+        "prize": d.get("prize", ""),
+        "prizePoints": int(d.get("prizePoints", 0) or 0),
+        # None when no userId was supplied, or when that player never entered
+        # this one — the card then simply omits the "you finished" line.
+        "you": mine.get(str(d.get("championshipId"))),
     } for d in docs]}
 
 
@@ -904,7 +1010,9 @@ async def player_profile(user_id: str):
             "country": user.get("country", ""),
             "flag": country_flag(user.get("country")),
             "joinDate": user.get("createdAt"),
-            "profileImage": user.get("pfp", ""),
+            "profileImage": avatar_for(
+                user["_id"], user.get("pfp"), user.get("username")
+            ),
         },
         "currentStatus": {
             "weeklyRank": weekly_rank,
@@ -931,13 +1039,25 @@ async def player_profile(user_id: str):
 
 
 @router.post("/api/user/country")
-async def set_country(userId: str = Form(...), country: str = Form(...)):
-    """Country is user-selected — nothing in the login providers supplies it."""
+async def set_country(
+    request: Request,
+    country: str = Form(...),
+    userId: str = Form(""),
+):
+    """
+    Country is user-selected — nothing in the login providers supplies it.
+
+    The account acted on comes from the verified session, never from the form,
+    so a caller cannot set someone else's flag. `userId` is accepted only so an
+    inconsistent client gets a clear 403 instead of silently editing itself.
+    """
+    authenticated_id = await require_self(request, userId)
+
     code = (country or "").strip().upper()
     if len(code) != 2 or not code.isalpha():
         raise HTTPException(status_code=400, detail="country must be an ISO 3166-1 alpha-2 code")
 
-    uid = _oid(userId, "user id")
+    uid = _oid(authenticated_id, "user id")
     res = await db.users.update_one({"_id": uid}, {"$set": {"country": code}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
@@ -952,6 +1072,85 @@ async def set_country(userId: str = Form(...), country: str = Form(...)):
         )
 
     return {"status": "success", "country": code, "flag": country_flag(code)}
+
+
+# Avatars are stored inline on the user document as data URIs, so an oversized
+# upload would bloat both the document and every leaderboard payload that
+# carries a pfp. The browser downscales to 256px before sending, which lands
+# around 40KB — this cap only exists to stop a hand-rolled request.
+MAX_PFP_CHARS = 700_000
+
+ALLOWED_PFP_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/jpg;base64,",
+    "data:image/webp;base64,",
+    "data:image/gif;base64,",
+)
+
+
+@router.post("/api/user/profile")
+async def update_profile(
+    request: Request,
+    username: Optional[str] = Form(None),
+    pfp: Optional[str] = Form(None),
+    userId: str = Form(""),
+):
+    """
+    Edit the two profile fields a player owns: their name and their avatar.
+
+    Same trust model as set_country above — the account written to comes from
+    the verified session, and `userId` is accepted only so a client that has
+    drifted out of sync gets a clear 403 instead of silently editing itself.
+
+    Either field may be omitted; only what is sent gets written. An empty `pfp`
+    clears the avatar back to the default. `pfp` must be a data URI rather than
+    a link because OAuth logins already park a provider URL in this same field
+    and readers just drop whichever string they find into an <img src> — letting
+    a client write an arbitrary URL there would make every leaderboard fetch an
+    attacker-chosen host.
+    """
+    authenticated_id = await require_self(request, userId)
+
+    updates: Dict[str, Any] = {}
+
+    if username is not None:
+        name = " ".join(username.split())  # collapses whitespace and strips newlines
+        if not 2 <= len(name) <= 30:
+            raise HTTPException(status_code=400, detail="Name must be 2-30 characters")
+        updates["username"] = name
+
+    if pfp is not None:
+        image = pfp.strip()
+        if image:
+            if not image.startswith(ALLOWED_PFP_PREFIXES):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Profile image must be a PNG, JPEG, WebP or GIF data URI",
+                )
+            if len(image) > MAX_PFP_CHARS:
+                raise HTTPException(status_code=413, detail="Profile image is too large")
+        updates["pfp"] = image
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    uid = _oid(authenticated_id, "user id")
+    res = await db.users.update_one({"_id": uid}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # championship_entries keeps its own copy of the name and avatar, refreshed
+    # on each race. Without this the standings would keep showing the old ones
+    # until the player next races.
+    champ = await get_active_championship()
+    if champ:
+        await db.championship_entries.update_one(
+            {"championshipId": champ["_id"], "userId": str(uid)},
+            {"$set": updates},
+        )
+
+    return {"status": "success", **updates}
 
 
 # --------------------------------------------------------------- admin panel
@@ -1058,6 +1257,8 @@ async def admin_create_championship(
     scheduledStart: str = Form(""),
     dailyBonusRaces: int = Form(DEFAULT_BONUS_RACES),
     dailyBonusPoints: int = Form(DEFAULT_BONUS_POINTS),
+    prize: str = Form(""),
+    prizePoints: int = Form(0),
 ):
     await require_admin(request)
 
@@ -1087,6 +1288,8 @@ async def admin_create_championship(
         "scheduledStart": scheduled_ms,
         "dailyBonusRaces": max(1, int(dailyBonusRaces)),
         "dailyBonusPoints": max(0, int(dailyBonusPoints)),
+        "prize": prize.strip(),
+        "prizePoints": max(0, int(prizePoints)),
         "createdAt": to_ms(utc_now()),
         "updatedAt": to_ms(utc_now()),
     })
@@ -1102,6 +1305,8 @@ async def admin_update_championship(
     description: str = Form(""),
     dailyBonusRaces: int = Form(DEFAULT_BONUS_RACES),
     dailyBonusPoints: int = Form(DEFAULT_BONUS_POINTS),
+    prize: str = Form(""),
+    prizePoints: int = Form(0),
     startMode: str = Form(""),
 ):
     """
@@ -1124,6 +1329,8 @@ async def admin_update_championship(
         "description": description.strip(),
         "dailyBonusRaces": max(1, int(dailyBonusRaces)),
         "dailyBonusPoints": max(0, int(dailyBonusPoints)),
+        "prize": prize.strip(),
+        "prizePoints": max(0, int(prizePoints)),
         "updatedAt": to_ms(utc_now()),
     }
     if champ.get("status") == STATUS_QUEUED and startMode in (

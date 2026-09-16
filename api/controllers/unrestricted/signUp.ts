@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import User from "../../models/User";
 import createJwt from "../../helpers/auth/createJwt";
+import cookieDomain from "../../helpers/auth/cookieDomain";
 
 export async function signUp(req: Request, res: Response): Promise<void> {
   const body = req.body;
@@ -48,6 +49,7 @@ export async function signUp(req: Request, res: Response): Promise<void> {
 
                   res.cookie("token", jwt, {
                     httpOnly: false,
+                    ...cookieDomain(),
                   });
 
                   res.json({ msg: "Signed up." });

@@ -9,6 +9,7 @@ import timer from "../assets/timer.png";
 import hashtag from "../assets/hashtag.png";
 import gift from "../assets/gift.png";
 import FavoriteBalls from "./FavoriteBalls";
+import PlayerProfileModal from "./PlayerProfileModal";
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, CirclePlus } from "lucide-react";
 import {
@@ -181,6 +182,7 @@ const PerformanceStats = () => {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ email: userJson.user._id }),
       });
       const data = await statsRes.json();
@@ -270,11 +272,17 @@ interface UserData {
   };
 }
 interface ApiTopFinisher {
+  /** Empty when the game document never recorded one — the name stays plain text then. */
+  userId: string;
   name: string;
   position: string;
   time: string;
   ball: string;
   iconType: string;
+  /** Emoji, already built server-side. Empty when the player picked no country. */
+  flag?: string;
+  /** Daily participation streak; 0 once it lapses, and then not shown. */
+  currentStreak?: number;
 }
 interface ApiRace {
   id: string;
@@ -318,6 +326,7 @@ export default function RaceHistory() {
   const [showGameTypeOptions, setShowGameTypeOptions] = useState(false);
   const [, setUserData] = useState<UserData>({});
   const [userId, setUserId] = useState<string | null>(null);
+  const [openProfile, setOpenProfile] = useState<{ userId: string; username: string } | null>(null);
   const dateOptions = [
     "Today",
     "Yesterday",
@@ -373,6 +382,7 @@ export default function RaceHistory() {
           headers: {
             "Content-Type": "application/json",
           },
+          credentials: "include",
           // Use the state variables here
           body: JSON.stringify({ 
             userId: userId, 
@@ -620,9 +630,26 @@ export default function RaceHistory() {
                         key={i}
                         className="flex justify-between items-center bg-[#121212] p-3 rounded-xl border border-gray-800"
                       >
-                        <div>
-                          <p className="text-white font-semibold text-sm">
-                            {f.name}
+                        <div className="min-w-0">
+                          <p className="text-white font-semibold text-sm flex items-center gap-2 truncate">
+                            {f.flag && <span className="shrink-0">{f.flag}</span>}
+                            {f.userId ? (
+                              <button
+                                onClick={() =>
+                                  setOpenProfile({ userId: f.userId, username: f.name })
+                                }
+                                className="truncate hover:text-[#8b6fed] transition"
+                              >
+                                {f.name}
+                              </button>
+                            ) : (
+                              <span className="truncate">{f.name}</span>
+                            )}
+                            {!!f.currentStreak && (
+                              <span className="text-xs text-orange-400 font-normal shrink-0">
+                                🔥 {f.currentStreak}
+                              </span>
+                            )}
                           </p>
                           <p className="text-xs">
                             <span className="text-purple-400 font-semibold">
@@ -653,6 +680,14 @@ export default function RaceHistory() {
       )}
 
       {activeTab === "performance" && <PerformanceStats />}
+
+      {openProfile && (
+        <PlayerProfileModal
+          userId={openProfile.userId}
+          username={openProfile.username}
+          onClose={() => setOpenProfile(null)}
+        />
+      )}
     </div>
   );
 }

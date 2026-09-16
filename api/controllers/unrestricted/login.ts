@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import verifyJwt from "../../helpers/auth/verifyJwt";
 import User from "../../models/User";
 import createJwt from "../../helpers/auth/createJwt";
+import cookieDomain from "../../helpers/auth/cookieDomain";
 
 export async function login(req: Request, res: Response): Promise<void> {
   let user;
@@ -14,7 +15,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       user = await User.findOne({}, null, { sort: { _id: -1 }, limit: 1 });
       if (user) {
         const jwt = await createJwt(user._id.toString());
-        res.cookie("token", jwt, { httpOnly: false });
+        res.cookie("token", jwt, { httpOnly: false, ...cookieDomain() });
       }
     } else {
       user = await User.findOne({}, null, { sort: { _id: -1 }, limit: 1 });
@@ -23,7 +24,7 @@ export async function login(req: Request, res: Response): Promise<void> {
     user = await User.findOne({}, null, { sort: { _id: -1 }, limit: 1 });
     if (user) {
       const jwt = await createJwt(user._id.toString());
-      res.cookie("token", jwt, { httpOnly: false });
+      res.cookie("token", jwt, { httpOnly: false, ...cookieDomain() });
     }
   }
 

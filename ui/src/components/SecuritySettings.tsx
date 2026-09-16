@@ -19,7 +19,12 @@ const SecuritySettings = ({ id }: SecuritySettingsProps) => {
       // once confirmed send request to delete account
     ) {
         if (id) {
-                fetch(`/api/account/deletion?user_id=${id}`, { method: "DELETE" })
+                // Absolute URL: this endpoint lives on the Python API, so a
+                // relative path hit the frontend's own origin and 404'd.
+                fetch(
+                  `${import.meta.env.VITE_PY_SERVER_URL}/api/account/deletion?user_id=${id}`,
+                  { method: "DELETE", credentials: "include" }
+                )
                     .then((response) => {
                         if (response.ok) {
                             alert("Account deleted Initially. it will take up to 30 days to be fully removed.");

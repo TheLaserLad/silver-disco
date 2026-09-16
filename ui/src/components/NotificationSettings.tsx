@@ -44,7 +44,10 @@ const NotificationSettings: React.FC<{ userId: string }> = ({ userId }) => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_PY_SERVER_URL}/api/user/notifications/${userId}`);
+        const res = await fetch(
+          `${import.meta.env.VITE_PY_SERVER_URL}/api/user/notifications/${userId}`,
+          { credentials: "include" }
+        );
         if (res.ok) {
           const data = await res.json();
           setRaceReminders(data.raceReminders ?? true);
@@ -82,6 +85,7 @@ const NotificationSettings: React.FC<{ userId: string }> = ({ userId }) => {
       const res = await fetch(`${import.meta.env.VITE_PY_SERVER_URL}/api/user/notifications`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
 

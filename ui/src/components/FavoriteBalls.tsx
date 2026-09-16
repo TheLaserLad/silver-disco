@@ -23,9 +23,11 @@ const importedBalls = [
 ];
 // get the list of favorite balls from props or data
 interface FavoriteBallsProps {
-  balls: number[]; 
+  // Optional because the destructure below supplies a default — declaring it
+  // required made that default unreachable and broke callers that rely on it.
+  balls?: number[];
 
-}const FavoriteBalls: React.FC<FavoriteBallsProps> = ({ balls = [1, 2, 3, 4, 5] }) => {    
+}const FavoriteBalls: React.FC<FavoriteBallsProps> = ({ balls = [1, 2, 3, 4, 5] }) => {
 
   const ballColors: Record<number, string> = {
     1: "bg-yellow-500",
