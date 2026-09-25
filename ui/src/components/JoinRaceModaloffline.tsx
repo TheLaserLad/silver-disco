@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Play, SkipForward, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -34,15 +34,233 @@ interface JoinRaceModalProps {
   onClose: () => void;
 }
 
-// Define the structure of the API response
+// Define the structure of the API response.
+// Remaining-race fields are optional: the live API only added them alongside
+// the existing play response. Older responses still omit them.
 interface OfflineGameResult {
   video_link: string;
   user_ball: string;
   user_position: string;
   user_points: number;
+  daily_limit?: number;
+  played_today?: number;
+  races_remaining?: number;
+}
+
+type Playback =
+  | { kind: "video"; src: string }
+  | { kind: "iframe"; src: string; provider: "youtube" | "bunny" | "embed" };
+
+function finiteCount(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const json = decodeURIComponent(
+      atob(padded)
+        .split("")
+        .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, "0")}`)
+        .join("")
+    );
+    const payload = JSON.parse(json);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The play API returns a signed redirect. The real Bunny or file URL is inside the token. */
+function unwrapPlayableUrl(videoLink: string): string {
+  try {
+    const url = new URL(videoLink);
+    const token = url.searchParams.get("token");
+    const wrapped = Boolean(token) && (url.pathname.includes("secure-stream") || url.hostname.endsWith("pinballrace.com"));
+    if (!wrapped || !token) return videoLink;
+    const payload = decodeJwtPayload(token);
+    const target = payload?.target_url;
+    if (typeof target === "string" && /^https?:\/\//i.test(target)) return target;
+  } catch {
+    /* keep the original link */
+  }
+  return videoLink;
+}
+
+function youtubeId(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, "").replace(/^m\./, "");
+    if (host === "youtu.be") {
+      const id = url.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[0-9A-Za-z_-]{11}$/.test(id) ? id : null;
+    }
+    if (host !== "youtube.com" && host !== "youtube-nocookie.com") return null;
+    const fromQuery = url.searchParams.get("v") || "";
+    if (/^[0-9A-Za-z_-]{11}$/.test(fromQuery)) return fromQuery;
+    const parts = url.pathname.split("/").filter(Boolean);
+    const markers = new Set(["embed", "shorts", "live", "v"]);
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      if (markers.has(parts[i]) && /^[0-9A-Za-z_-]{11}$/.test(parts[i + 1])) return parts[i + 1];
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function withParams(raw: string, params: Record<string, string>): string {
+  try {
+    const url = new URL(raw);
+    Object.entries(params).forEach(([key, value]) => {
+      if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+    });
+    return url.toString();
+  } catch {
+    const joiner = raw.includes("?") ? "&" : "?";
+    const extra = Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+    return `${raw}${joiner}${extra}`;
+  }
+}
+
+function resolvePlayback(videoLink: string): Playback {
+  const target = unwrapPlayableUrl(videoLink);
+  const id = youtubeId(target);
+  if (id) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return {
+      kind: "iframe",
+      provider: "youtube",
+      src: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${origin ? `&origin=${encodeURIComponent(origin)}` : ""}`,
+    };
+  }
+  const path = target.split("?")[0].toLowerCase();
+  if (/\.(mp4|webm|ogg)$/.test(path)) return { kind: "video", src: target };
+  const bunny = /mediadelivery\.net|bunnycdn\.com|b-cdn\.net/i.test(target);
+  return {
+    kind: "iframe",
+    provider: bunny ? "bunny" : "embed",
+    src: withParams(target, {
+      autoplay: bunny ? "true" : "1",
+      muted: bunny ? "true" : "1",
+      mute: "1",
+      preload: "true",
+      loop: "false",
+      playsinline: "1",
+    }),
+  };
+}
+
+function postToPlayer(frame: HTMLIFrameElement | null) {
+  const win = frame?.contentWindow;
+  if (!win) return;
+  const send = (payload: object) => {
+    try {
+      win.postMessage(JSON.stringify(payload), "*");
+    } catch {
+      /* player not ready */
+    }
+  };
+  send({ event: "listening", id: "ondemand-race", channel: "widget" });
+  send({ event: "command", func: "playVideo", args: [] });
+  send({ event: "command", func: "unMute", args: [] });
+  send({ context: "player.js", version: "0.0.11", method: "play" });
+  send({ context: "player.js", version: "0.0.11", method: "unmute" });
+  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "ended" });
+  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "play" });
+  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "ready" });
+}
+
+function messageMeansPlaying(data: Record<string, unknown>): boolean {
+  if (data.event === "play") return true;
+  if (data.event === "onStateChange") {
+    const info = data.info;
+    const state = typeof info === "number" ? info : info && typeof info === "object" ? (info as { playerState?: number }).playerState : undefined;
+    return state === 1;
+  }
+  return false;
+}
+
+type Allowance =
+  | { kind: "remaining"; left: number }
+  | { kind: "cap"; limit: number }
+  | { kind: "unknown" };
+
+function allowanceFrom(result: OfflineGameResult | null, landingCap: number | null): Allowance {
+  const reported = finiteCount(result?.races_remaining);
+  if (reported !== null) return { kind: "remaining", left: reported };
+  const played = finiteCount(result?.played_today);
+  const limit = finiteCount(result?.daily_limit);
+  if (played !== null && limit !== null) return { kind: "remaining", left: Math.max(0, limit - played) };
+  const cap = limit ?? (landingCap !== null && landingCap > 0 ? landingCap : null);
+  if (cap !== null) return { kind: "cap", limit: cap };
+  return { kind: "unknown" };
+}
+
+function messageMeansEnded(data: Record<string, unknown>): boolean {
+  if (data.event === "ended" || data.event === "finish") return true;
+  if (data.context === "player.js" && (data.event === "ended" || data.event === "finish")) return true;
+  if (data.event === "onStateChange" || data.event === "infoDelivery") {
+    const info = data.info;
+    const state = typeof info === "number" ? info : info && typeof info === "object" ? (info as { playerState?: number }).playerState : undefined;
+    return state === 0;
+  }
+  return false;
 }
 
 type ModalStep = 'select' | 'video' | 'result';
+
+function racesLeftCopy(
+  result: OfflineGameResult | null,
+  landingCap: number | null,
+  noneLeft: boolean
+): { text: string; canPlayNext: boolean } {
+  if (noneLeft) return { text: "No on-demand races left today.", canPlayNext: false };
+  const allowance = allowanceFrom(result, landingCap);
+  if (allowance.kind === "remaining") {
+    if (allowance.left <= 0) return { text: "No on-demand races left today.", canPlayNext: false };
+    const noun = allowance.left === 1 ? "race" : "races";
+    return { text: `${allowance.left} on-demand ${noun} left today.`, canPlayNext: true };
+  }
+  if (allowance.kind === "cap") {
+    return {
+      text: `Up to ${allowance.limit.toLocaleString()} on-demand races a day.`,
+      canPlayNext: true,
+    };
+  }
+  return { text: "New races available every day.", canPlayNext: true };
+}
+
+const RaceAllowance: React.FC<{
+  result: OfflineGameResult | null;
+  landingCap: number | null;
+  noneLeft: boolean;
+}> = ({ result, landingCap, noneLeft }) => {
+  const copy = racesLeftCopy(result, landingCap, noneLeft);
+  return <p className="text-sm text-gray-300 text-center">{copy.text}</p>;
+};
+
+const RaceNext: React.FC<{
+  result: OfflineGameResult | null;
+  landingCap: number | null;
+  noneLeft: boolean;
+  onPlayNext: () => void;
+}> = ({ result, landingCap, noneLeft, onPlayNext }) => {
+  const copy = racesLeftCopy(result, landingCap, noneLeft);
+  if (!copy.canPlayNext) return null;
+  return (
+    <button
+      onClick={onPlayNext}
+      className="w-full py-3 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition shadow-lg shadow-indigo-900/50"
+    >
+      Play the next race
+    </button>
+  );
+};
 
 const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   // UI State
@@ -53,14 +271,21 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   const [selectedBall, setSelectedBall] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [gameResult, setGameResult] = useState<OfflineGameResult | null>(null);
+  const [dailyCap, setDailyCap] = useState<number | null>(null);
+  const [noneLeft, setNoneLeft] = useState(false);
 
-  // Refs
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const startedRef = useRef(false);
+  const videoOpenedAt = useRef(0);
 
   // Env vars
   const serverUrl = import.meta.env.VITE_PY_SERVER_URL;
   const serverurl1 = import.meta.env.VITE_SERVER_URL;
   const [videoCountdown, setVideoCountdown] = useState(30);
   const [canSkipVideo, setCanSkipVideo] = useState(false);
+
+  const playback = gameResult?.video_link ? resolvePlayback(gameResult.video_link) : null;
 
   // Countdown only runs while the race video is actually on screen
   useEffect(() => {
@@ -83,18 +308,90 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
     return () => clearInterval(timer);
   }, [step]);
 
-  // Helper to ensure autoplay is forced on the URL
-  const getAutoplayUrl = (url: string) => {
-    if (!url) return "";
-    try {
-      const urlObj = new URL(url);
-      urlObj.searchParams.set("autoplay", "1");
-      // urlObj.searchParams.set("mute", "1"); // Uncomment if browser blocks autoplay
-      return urlObj.toString();
-    } catch (e) {
-      return url.includes("?") ? `${url}&autoplay=1` : `${url}?autoplay=1`;
-    }
+  useEffect(() => {
+    const py = import.meta.env.VITE_PY_SERVER_URL;
+    if (!py) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${py}/landing`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const cap = finiteCount(data?.max_offline_race);
+        if (!cancelled && cap !== null && cap > 0) setDailyCap(cap);
+      } catch {
+        /* cap is optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const finishRace = () => {
+    const elapsed = Date.now() - videoOpenedAt.current;
+    // Ignore the player's initial "ended/unstarted" burst. A real finish
+    // either follows playback or arrives after the race has been on screen.
+    if (!startedRef.current && elapsed < 1500) return;
+    setStep((current) => (current === "video" ? "result" : current));
   };
+
+  // Start playback as soon as the race video is on screen, then advance when it ends.
+  useEffect(() => {
+    if (step !== "video" || !playback) return;
+    startedRef.current = false;
+    videoOpenedAt.current = Date.now();
+
+    const markStarted = () => {
+      startedRef.current = true;
+    };
+    const onMessage = (event: MessageEvent) => {
+      let data: unknown = event.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
+        }
+      }
+      if (!data || typeof data !== "object") return;
+      const record = data as Record<string, unknown>;
+      if (record.event === "ready") postToPlayer(iframeRef.current);
+      if (messageMeansPlaying(record)) markStarted();
+      const explicitEnd = record.event === "ended" || record.event === "finish";
+      if (explicitEnd || (messageMeansEnded(record) && startedRef.current)) finishRace();
+    };
+    window.addEventListener("message", onMessage);
+
+    const kick = window.setInterval(() => postToPlayer(iframeRef.current), 700);
+    const stopKicking = window.setTimeout(() => window.clearInterval(kick), 8000);
+    postToPlayer(iframeRef.current);
+
+    const video = videoRef.current;
+    if (video && playback.kind === "video") {
+      video.muted = true;
+      const attempt = video.play();
+      if (attempt) {
+        attempt
+          .then(() => {
+            markStarted();
+            video.muted = false;
+            return video.play();
+          })
+          .catch(() => {
+            video.muted = true;
+            video.play().catch(() => undefined);
+          });
+      }
+    }
+
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.clearInterval(kick);
+      window.clearTimeout(stopKicking);
+    };
+  }, [step, playback?.src]);
+
   // 1. Fetch User ID
   useEffect(() => {
     const fetchUser = async () => {
@@ -133,13 +430,15 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
         } catch (e) {
           errorDetail = `Server returned status ${res.status}`;
         }
+        if (/daily limit/i.test(errorDetail)) setNoneLeft(true);
         throw new Error(errorDetail);
       }
 
       const result: OfflineGameResult = await res.json();
-      
+
       // Store result and switch to video view
       setGameResult(result);
+      setNoneLeft(false);
       setStep('video'); 
       
     } catch (err: any) {
@@ -188,15 +487,18 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
         </div>
       </div>
 
+      {noneLeft && (
+        <p className="px-4 pt-3 text-sm text-gray-300 bg-[#1a1a1a]">No on-demand races left today.</p>
+      )}
       <div className="flex justify-end items-center p-4 border-t border-gray-800 bg-[#1a1a1a] space-x-4">
         <button onClick={onClose} className="text-gray-400 hover:text-white transition text-sm font-medium">
           Cancel
         </button>
         <button
           className={`px-6 py-2 rounded-full font-semibold text-white transition flex items-center gap-2
-            ${selectedBall ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-700 cursor-not-allowed"}
+            ${selectedBall && !noneLeft ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-700 cursor-not-allowed"}
           `}
-          disabled={!selectedBall || !userId || loading}
+          disabled={!selectedBall || !userId || loading || noneLeft}
           onClick={handleJoin}
         >
           {loading ? (
@@ -227,16 +529,29 @@ const renderVideoStep = () => (
           <X size={24} />
         </button>
 
-        {gameResult?.video_link ? (
+        {playback?.kind === "video" ? (
+          <video
+            ref={videoRef}
+            src={playback.src}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full bg-black"
+            onPlay={() => {
+              startedRef.current = true;
+            }}
+            onEnded={() => finishRace()}
+          />
+        ) : playback?.kind === "iframe" ? (
           <iframe
-            // Pass the URL through the helper to force ?autoplay=1
-            src={getAutoplayUrl(gameResult.video_link)} 
+            ref={iframeRef}
+            src={playback.src}
             title="Race Video"
-            className="w-full h-full" 
+            className="w-full h-full"
             frameBorder="0"
-            // Required for YouTube API to allow autoplay
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
+            onLoad={() => postToPlayer(iframeRef.current)}
           />
         ) : (
             <div className="text-white text-xl">Video not available</div>
@@ -245,9 +560,9 @@ const renderVideoStep = () => (
 
       {/* Footer - Now guaranteed to stay visible because the video above can shrink */}
       <div className="flex-none flex justify-between items-center p-4 border-t border-gray-800 bg-[#1a1a1a] z-50 h-16">
-        <div className="text-gray-400 text-sm animate-pulse flex items-center gap-2">
+        <div className="text-gray-400 text-sm flex items-center gap-2">
             <span className="w-2 h-2 bg-red-500 rounded-full animate-ping"/>
-            Watching race...
+            Watch the race
         </div>
         <button
           onClick={handleVideoComplete}
@@ -260,9 +575,9 @@ const renderVideoStep = () => (
         >
           {/* Show the countdown dynamically */}
           {canSkipVideo ? (
-            <>Continue <SkipForward size={18} /></>
+            <>Skip to results <SkipForward size={18} /></>
           ) : (
-            `Wait ${videoCountdown}s`
+            `Skip in ${videoCountdown}s`
           )}
         </button>
       </div>
@@ -312,14 +627,24 @@ const renderVideoStep = () => (
                 </div>
             </div>
         </div>
-        
+
+        <RaceAllowance result={gameResult} landingCap={dailyCap} noneLeft={noneLeft} />
 
       </div>
 
-      <div className="p-4 border-t border-gray-800 bg-[#1a1a1a]">
+      <div className="p-4 border-t border-gray-800 bg-[#1a1a1a] space-y-3">
+        <RaceNext
+          result={gameResult}
+          landingCap={dailyCap}
+          noneLeft={noneLeft}
+          onPlayNext={() => {
+            setGameResult(null);
+            setStep("select");
+          }}
+        />
         <button
           onClick={onClose}
-          className="w-full py-3 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition shadow-lg shadow-indigo-900/50"
+          className="w-full py-3 rounded-full bg-[#121212] text-white font-semibold border border-gray-700 hover:border-gray-500 transition"
         >
           Close
         </button>

@@ -423,8 +423,10 @@ async def get_offline_game_url(
         {"racesPlayed": 1}
     )
 
+    daily_limit = int(MAX_OFFLINE_GAMES_PER_DAY)
+    # Plays already stored before this race. process_off_game appends this one.
+    daily_offline_plays = 0
     if user:
-        daily_offline_plays = 0
         races_played = user.get("racesPlayed", [])
         
         # Count how many offline races were played today
@@ -432,8 +434,8 @@ async def get_offline_game_url(
             if race.get("raceId") == "offline" and race.get("timestamp") >= start_of_day:
                 daily_offline_plays += 1
         
-        if daily_offline_plays >= int(MAX_OFFLINE_GAMES_PER_DAY):
-            raise HTTPException(status_code=403, detail=f"Daily limit of {MAX_OFFLINE_GAMES_PER_DAY} offline games reached")
+        if daily_offline_plays >= daily_limit:
+            raise HTTPException(status_code=403, detail=f"Daily limit of {daily_limit} offline games reached")
         
     pipeline = [
         # 1. Filter: Same conditions as before
@@ -453,10 +455,15 @@ async def get_offline_game_url(
     # process_off_game already reports "10+" for a ball that did not place.
     ranks, points = await process_off_game(offline_game[0]["_id"],game_data.userId,game_data.ball_id)
     secure_link = create_secure_video_link(offline_game[0]["video_url"], game_data.userId)
+    played_today = daily_offline_plays + 1
     return {"video_link": secure_link,
             "user_ball":"ball_"+ str(game_data.ball_id),
             "user_position":ranks,
-            "user_points":points}
+            "user_points":points,
+            # Informational only. Scoring above is unchanged.
+            "daily_limit": daily_limit,
+            "played_today": played_today,
+            "races_remaining": max(0, daily_limit - played_today)}
 
 
 @app.post("/api/games/offline/delete")
