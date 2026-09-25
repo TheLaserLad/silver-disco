@@ -42,6 +42,7 @@ from utils.lp import router as lp_router
 from utils.yolo_model import yolo_model
 import championship
 from championship import router as championship_router, country_flag, effective_streak, utc_now
+from growth_admin import router as growth_router
 from auth import require_self
 from avatars import avatar_svg
 
@@ -78,6 +79,7 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 app.include_router(utils_router)
 app.include_router(lp_router)
 app.include_router(championship_router)
+app.include_router(growth_router)
 
 app.mount("/screenshots", StaticFiles(directory="screenshots"), name="screenshots")
 

@@ -27,12 +27,15 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .header-nav {
     display: flex;
     gap: 1rem;
+    flex-wrap: wrap;
 }
 
 .nav-link {
