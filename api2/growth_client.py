@@ -1,8 +1,9 @@
 # growth_client.py
 #
 # Talks to the player API growth admin routes. The player API is the only
-# place growth settings are stored. This module never writes Mongo collections
-# and never sends email.
+# place growth settings are stored. This module never writes Mongo collections,
+# never sends email, and never mints a Node admin cookie. The race-desk session
+# is not a Node adminToken; the caller passes PLAYER_API_ADMIN_TOKEN.
 #
 # Routes (already live on the player service):
 #   GET  /admin/growth
@@ -11,11 +12,7 @@
 #   POST /admin/growth/clawback   { username, date, amount }
 #   GET  /admin/growth/invites?username=
 
-import base64
-import hashlib
-import hmac
 import json
-import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
@@ -219,38 +216,6 @@ class PlayerApiError(Exception):
     def __init__(self, message: str, status: Optional[int] = None):
         super().__init__(message)
         self.status = status
-
-
-def _b64url(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def sign_hs256(payload: Any, secret: str, ttl_seconds: int = 600, now: Optional[int] = None) -> str:
-    """HS256 JWT matching the player API (jsonwebtoken, algorithm HS256)."""
-    if not secret:
-        raise PlayerApiError("JWT secret is empty")
-    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
-    if isinstance(payload, dict):
-        now_i = int(time.time() if now is None else now)
-        body_obj = dict(payload)
-        body_obj.setdefault("iat", now_i)
-        body_obj.setdefault("exp", now_i + int(ttl_seconds))
-        body_bytes = json.dumps(body_obj, separators=(",", ":")).encode()
-    elif isinstance(payload, str):
-        body_bytes = json.dumps(payload).encode()
-    else:
-        raise TypeError("JWT payload must be an object or a string")
-    body = _b64url(body_bytes)
-    sig = hmac.new(secret.encode("utf-8"), f"{header}.{body}".encode("ascii"), hashlib.sha256).digest()
-    return f"{header}.{body}.{_b64url(sig)}"
-
-
-def decode_jwt_payload(token: str) -> Any:
-    parts = token.split(".")
-    if len(parts) != 3:
-        raise ValueError("Not a JWT")
-    pad = "=" * (-len(parts[1]) % 4)
-    return json.loads(base64.urlsafe_b64decode(parts[1] + pad))
 
 
 def as_bool(value: Any) -> bool:

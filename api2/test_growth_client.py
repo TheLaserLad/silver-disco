@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 from growth_client import (
     build_settings_update,
     clawback_body,
-    decode_jwt_payload,
     extract_forced,
     extract_settings,
     parse_form,
@@ -22,7 +21,6 @@ from growth_client import (
     request_with_tokens,
     revoke_body,
     safe_operator_error,
-    sign_hs256,
 )
 
 UK = ZoneInfo("Europe/London")
@@ -141,14 +139,6 @@ class DefaultsTest(unittest.TestCase):
             clawback_body("ada", "2026-09-25", 2),
             {"username": "ada", "date": "2026-09-25", "amount": 2},
         )
-
-    def test_jwt_shapes(self):
-        secret = "test-secret"
-        object_token = sign_hs256({"_id": "abc"}, secret, now=1_700_000_000)
-        self.assertEqual(decode_jwt_payload(object_token)["_id"], "abc")
-        self.assertIn("exp", decode_jwt_payload(object_token))
-        string_token = sign_hs256("abc", secret)
-        self.assertEqual(decode_jwt_payload(string_token), "abc")
 
     def test_mongo_uri_is_not_shown_to_the_operator(self):
         message = safe_operator_error(RuntimeError("failed mongodb://admin:secret@db/pinball"))
@@ -309,6 +299,10 @@ class RouteTest(unittest.TestCase):
         guest = client.get("/growth", follow_redirects=False)
         self.assertEqual(guest.status_code, 302)
         self.assertEqual(guest.headers["location"], "/login")
+        # A Node adminToken is not the race-desk session.
+        node_cookie = client.get("/growth", cookies={"adminToken": "not-a-desk-session"}, follow_redirects=False)
+        self.assertEqual(node_cookie.status_code, 302)
+        self.assertEqual(node_cookie.headers["location"], "/login")
         blocked = client.post("/growth/settings", data={"invites": "1"}, follow_redirects=False)
         self.assertEqual(blocked.status_code, 302)
         self.assertEqual(blocked.headers["location"], "/login")
@@ -375,12 +369,17 @@ class RouteTest(unittest.TestCase):
             return "Gregg"
 
         growth_admin.require_admin = as_gregg
-        growth_admin._clear_token_cache()
         old_base = os.environ.get("PLAYER_API_BASE_URL")
         old_token = os.environ.get("PLAYER_API_ADMIN_TOKEN")
         os.environ["PLAYER_API_BASE_URL"] = f"http://{host}:{port}"
-        os.environ["PLAYER_API_ADMIN_TOKEN"] = "good"
+        os.environ.pop("PLAYER_API_ADMIN_TOKEN", None)
         try:
+            missing = client.get("/growth")
+            self.assertEqual(missing.status_code, 200)
+            self.assertIn("does not sign into the player service", missing.text)
+            self.assertIn(">Off<", missing.text)
+            self.assertEqual(seen, [])
+            os.environ["PLAYER_API_ADMIN_TOKEN"] = "good"
             page = client.get("/growth")
             self.assertEqual(page.status_code, 200)
             self.assertIn("Play ledger", page.text)
@@ -414,7 +413,6 @@ class RouteTest(unittest.TestCase):
             self.assertIn("bea", looked.text)
         finally:
             growth_admin.require_admin = original
-            growth_admin._clear_token_cache()
             if old_base is None:
                 os.environ.pop("PLAYER_API_BASE_URL", None)
             else:

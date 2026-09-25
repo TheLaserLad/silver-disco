@@ -5,13 +5,17 @@
 # Settings live on the player API (GET/POST /admin/growth…). This page does not
 # write a second settings store and it does not send email. Switches stay off
 # unless an admin turns one on and saves.
+#
+# The HTML page uses the same race-desk session as Dashboard (cookie session_id,
+# Mongo collection sessions, MONGO_URI). That login is not Node's adminToken.
+# Node authenticateAdmin will reject it. Calls to 127.0.0.1:8080 send
+# PLAYER_API_ADMIN_TOKEN only. Growth collection names are not invented here.
 
 import asyncio
 import inspect
 import os
-import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
@@ -26,7 +30,6 @@ from growth_client import (
     clawback_body,
     extract_forced,
     extract_settings,
-    is_auth_error,
     parse_form,
     post_settings,
     present_invites,
@@ -34,7 +37,6 @@ from growth_client import (
     request_with_tokens,
     revoke_body,
     safe_operator_error,
-    sign_hs256,
 )
 
 load_dotenv()
@@ -48,10 +50,6 @@ mongo = AsyncIOMotorClient(MONGO_URI)
 db = mongo[DB_NAME]
 
 templates = Jinja2Templates(directory="templates")
-
-# Short-lived player-admin cookie minted from JWT_SECRET_KEY. Never the
-# growth settings themselves.
-_token_cache: Dict[str, Any] = {"token": None, "until": 0.0}
 
 NOTICES = {
     "saved": "Saved. The switches are exactly as you left them. No email was sent.",
@@ -70,7 +68,7 @@ def _base_url() -> str:
 
 
 async def require_admin(request: Request) -> str:
-    """Same session cookie as the rest of the race desk. No cookie, no Mongo call."""
+    """Race-desk session only. A Node adminToken cookie is not accepted here."""
     sid = request.cookies.get("session_id")
     if not sid:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -84,42 +82,20 @@ async def require_admin(request: Request) -> str:
     return session["username"]
 
 
-def _clear_token_cache() -> None:
-    _token_cache["token"] = None
-    _token_cache["until"] = 0.0
-
-
-async def _token_candidates() -> Tuple[List[str], bool]:
-    """Return (tokens, cacheable). An explicit env token is not rewritten."""
-    explicit = os.getenv("PLAYER_API_ADMIN_TOKEN", "").strip()
-    if explicit:
-        return [explicit], False
-    now = time.time()
-    cached = _token_cache.get("token")
-    if cached and float(_token_cache.get("until") or 0) > now:
-        return [str(cached)], True
-    secret = os.getenv("JWT_SECRET_KEY", "").strip()
-    if not secret:
+def _admin_token() -> str:
+    """Player-API adminToken. Never the race-desk session cookie."""
+    token = os.getenv("PLAYER_API_ADMIN_TOKEN", "").strip()
+    if not token:
         raise PlayerApiError(
-            "The race desk has no player-API admin cookie. Set PLAYER_API_ADMIN_TOKEN, "
-            "or set JWT_SECRET_KEY (the same secret the player API already uses)."
+            "This race-desk login does not sign into the player service. "
+            "Set PLAYER_API_ADMIN_TOKEN in the race-desk environment to the player API adminToken cookie. "
+            "Nothing was changed."
         )
-    admin = await db.users.find_one({"userType": "Admin"})
-    if not admin or admin.get("_id") is None:
+    if any(char in token for char in "\r\n;"):
         raise PlayerApiError(
-            "No player account with type Admin was found. Set PLAYER_API_ADMIN_TOKEN "
-            "to a current adminToken cookie from the player API."
+            "PLAYER_API_ADMIN_TOKEN cannot contain a cookie separator. Nothing was changed."
         )
-    user_id = str(admin["_id"])
-    # Object payload matches createJwt.ts. The string payload is only a fallback
-    # for the older admin check that treated the whole token body as the user id.
-    return [sign_hs256({"_id": user_id}, secret), sign_hs256(user_id, secret)], True
-
-
-def _remember_token(token: str, cacheable: bool) -> None:
-    if cacheable and token:
-        _token_cache["token"] = token
-        _token_cache["until"] = time.time() + 300
+    return token
 
 
 async def _player_call(
@@ -127,21 +103,13 @@ async def _player_call(
     path: str,
     body: Optional[Dict[str, Any]] = None,
 ) -> Any:
-    tokens, cacheable = await _token_candidates()
+    token = _admin_token()
 
-    def run(these: List[str]) -> Tuple[Any, str]:
-        return request_with_tokens(_base_url(), these, method, path, body)
+    def run() -> Any:
+        result, _used = request_with_tokens(_base_url(), [token], method, path, body)
+        return result
 
-    try:
-        result, used = await asyncio.to_thread(run, tokens)
-    except PlayerApiError as exc:
-        if not (cacheable and is_auth_error(exc) and _token_cache.get("token")):
-            raise
-        _clear_token_cache()
-        tokens, cacheable = await _token_candidates()
-        result, used = await asyncio.to_thread(run, tokens)
-    _remember_token(used, cacheable)
-    return result
+    return await asyncio.to_thread(run)
 
 
 async def _load_raw() -> Dict[str, Any]:
@@ -285,16 +253,13 @@ async def growth_save(request: Request):
     forced = extract_forced(raw, previous)
     updated = build_settings_update(previous, parsed, forced)
     try:
-        tokens, cacheable = await _token_candidates()
+        token = _admin_token()
 
         def run():
-            return post_settings(_base_url(), tokens, updated, style)
+            return post_settings(_base_url(), [token], updated, style)
 
-        _result, used = await asyncio.to_thread(run)
-        _remember_token(used, cacheable)
+        await asyncio.to_thread(run)
     except PlayerApiError as exc:
-        if is_auth_error(exc):
-            _clear_token_cache()
         panel = present_panel(raw, overrides=parsed)
         return _render(request, username, panel, error=safe_operator_error(exc))
     except Exception as exc:
