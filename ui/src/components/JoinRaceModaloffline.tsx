@@ -1,6 +1,33 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, type FC } from "react";
+import { jsx, jsxs } from "react/jsx-runtime";
 import { X, Play, SkipForward, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
+import { createPostRaceShareCards } from "../helpers/growth/shareCards.js";
+
+const PostRaceShareCards = createPostRaceShareCards({
+  useState,
+  useEffect,
+  jsx,
+  jsxs,
+  toast: {
+    success: (message: string) => toast.success(message),
+    error: (message: string) => toast.error(message),
+  },
+  pageOrigin: () =>
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "https://pinballrace.com",
+  readUsername: async (apiBase: string) => {
+    try {
+      const res = await fetch(`${apiBase}/api/user/me`, { credentials: "include" });
+      const data = await res.json();
+      const name = data?.user?.username;
+      return typeof name === "string" ? name.trim() : "";
+    } catch {
+      return "";
+    }
+  },
+});
 
 // Import images (keeping your existing imports)
 import Ball1 from "../assets/balls/1.png";
@@ -44,7 +71,7 @@ interface OfflineGameResult {
 
 type ModalStep = 'select' | 'video' | 'result';
 
-const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
+const JoinRaceModal: FC<JoinRaceModalProps> = ({ onClose }) => {
   // UI State
   const [step, setStep] = useState<ModalStep>('select');
   const [loading, setLoading] = useState(false);
@@ -52,6 +79,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   // Data State
   const [selectedBall, setSelectedBall] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
   const [gameResult, setGameResult] = useState<OfflineGameResult | null>(null);
 
   // Refs
@@ -104,6 +132,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
         });
         const data = await res.json();
         if (data?.user?._id) setUserId(data.user._id);
+        if (typeof data?.user?.username === "string") setUsername(data.user.username);
       } catch (err) {
         console.error("Failed to fetch user:", err);
       }
@@ -312,7 +341,13 @@ const renderVideoStep = () => (
                 </div>
             </div>
         </div>
-        
+
+        <PostRaceShareCards
+          apiBase={serverurl1 || ""}
+          userId={userId}
+          username={username}
+          position={gameResult?.user_position}
+        />
 
       </div>
 
