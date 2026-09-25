@@ -5,16 +5,16 @@ import Ball2 from "../assets/5balls/2.svg";
 import Ball3 from "../assets/5balls/3.svg";
 import Ball4 from "../assets/5balls/4.svg";
 import Ball5 from "../assets/5balls/5.svg";
-import Ball6 from "../assets/5balls/6.svg";
-import Ball7 from "../assets/5balls/7.svg";
-import Ball8 from "../assets/5balls/8.svg";
-import Ball9 from "../assets/5balls/9.svg";
-import Ball10 from "../assets/5balls/10.svg";
-import Ball11 from "../assets/5balls/11.svg";
-import Ball12 from "../assets/5balls/12.svg";
-import Ball13 from "../assets/5balls/13.svg";
-import Ball14 from "../assets/5balls/14.svg";
-import Ball15 from "../assets/5balls/15.svg";
+import Ball6 from "../assets/balls/6.png";
+import Ball7 from "../assets/balls/7.png";
+import Ball8 from "../assets/balls/8.png";
+import Ball9 from "../assets/balls/9.png";
+import Ball10 from "../assets/balls/10.png";
+import Ball11 from "../assets/balls/11.png";
+import Ball12 from "../assets/balls/12.png";
+import Ball13 from "../assets/balls/13.png";
+import Ball14 from "../assets/balls/14.png";
+import Ball15 from "../assets/balls/15.png";
 
 const importedBalls = [
   Ball1, Ball2, Ball3, Ball4, Ball5,

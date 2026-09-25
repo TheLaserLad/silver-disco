@@ -60,7 +60,9 @@
 }
 
 body {
-  background: var(--pure-light);
+  /* Dark shell so the homepage does not flash white before React paints. */
+  background: #000000;
+  color: #ffffff;
 }
 
 body > div {

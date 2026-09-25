@@ -1,5 +1,6 @@
-import offlin1 from '../../public/offline.png';
-import online1 from '../../public/online.png';
+// Public files are served as URLs. Importing them makes Vite refuse to load this page.
+const offlin1 = "/offline.png";
+const online1 = "/online.png";
 
 export default function HowToPlay() {
   return (
