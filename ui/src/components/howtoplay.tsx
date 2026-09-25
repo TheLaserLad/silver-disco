@@ -245,7 +245,7 @@ export default function HowToPlay() {
         <div className="htp-eyebrow">Game Guide</div>
         <h1 className="htp-title">How Pinball Race Works</h1>
         <p className="htp-subtitle">
-          Free daily marble races on a real physical track. Play live at scheduled times and enter 3 on-demand races per day to climb the leaderboard.
+          Open now. Play for free on a real physical track. Choose your ball, watch the race, and results appear automatically when the race finishes. New races available every day.
         </p>
         <div className="htp-divider" />
       </div>
@@ -261,12 +261,12 @@ export default function HowToPlay() {
             <div className="htp-step-line" />
           </div>
           <div className="htp-step-body">
-            <div className="htp-step-title">Pick Your Marble</div>
-            <p className="htp-step-desc">Before every race, choose the marble you think will win. Your chosen marble determines your points.</p>
+            <div className="htp-step-title">Choose your ball</div>
+            <p className="htp-step-desc">Pick a ball from 1–15. That ball is how you play the race.</p>
             <ul className="htp-bullets">
-              <li>Live races: pick before the countdown ends</li>
-              <li>On-demand races: choose before the replay starts</li>
-              <li>Every replay is unique and can only be played once</li>
+              <li>Choose your ball, then watch the race</li>
+              <li>Results appear automatically when the race finishes</li>
+              <li>New races available every day</li>
             </ul>
           </div>
         </div>
@@ -278,8 +278,8 @@ export default function HowToPlay() {
             <div className="htp-step-line" />
           </div>
           <div className="htp-step-body">
-            <div className="htp-step-title">Watch the Race</div>
-            <p className="htp-step-desc">Real physical marble races captured on track. Live races happen weekdays at 12:30 PM UK — join in real time or catch on-demand replays.</p>
+            <div className="htp-step-title">Watch the race</div>
+            <p className="htp-step-desc">On-demand races are recorded on the real track. Play one whenever you want. New races available every day.</p>
           </div>
         </div>
 
@@ -290,7 +290,7 @@ export default function HowToPlay() {
           </div>
           <div className="htp-step-body">
             <div className="htp-step-title">Earn Points &amp; Climb</div>
-            <p className="htp-step-desc">Points from every race count toward your global rank, weekly championships, and prize eligibility. Use all 3 daily on-demand races to maximise your score.</p>
+            <p className="htp-step-desc">Points from every race count toward your global rank, weekly championships, and prize eligibility.</p>
           </div>
         </div>
 
@@ -301,43 +301,33 @@ export default function HowToPlay() {
       <div className="htp-modes">
         <div className="htp-mode-card">
           <div className="htp-mode-header">
-            <div className="htp-mode-badge live" />
-            <div className="htp-mode-name">Live Races</div>
-          </div>
-          <ul className="htp-mode-list">
-            <li><span className="dot">▸</span> Weekdays at 12:30 PM UK</li>
-            <li><span className="dot">▸</span> Approx 1 hour</li>
-            <li><span className="dot">▸</span> Real-time competition</li>
-            <li><span className="dot">▸</span> Best for leaderboard climbing</li>
-            <li><span className="dot">▸</span> Sponsor-backed prize races</li>
-          </ul>
-        </div>
-        <div className="htp-mode-card">
-          <div className="htp-mode-header">
             <div className="htp-mode-badge demand" />
             <div className="htp-mode-name">On-Demand</div>
           </div>
           <ul className="htp-mode-list">
-            <li><span className="dot">▸</span> 3 per day</li>
-            <li><span className="dot">▸</span> Real footage from previous races</li>
-            <li><span className="dot">▸</span> Random race assignment</li>
-            <li><span className="dot">▸</span> No repeat races</li>
-            <li><span className="dot">▸</span> AI verified finish order</li>
+            <li><span className="dot">▸</span> Open now. Play for free.</li>
+            <li><span className="dot">▸</span> Choose your ball</li>
+            <li><span className="dot">▸</span> Watch the race</li>
+            <li><span className="dot">▸</span> Results appear automatically when the race finishes</li>
+            <li><span className="dot">▸</span> New races available every day</li>
+          </ul>
+        </div>
+        <div className="htp-mode-card">
+          <div className="htp-mode-header">
+            <div className="htp-mode-badge live" />
+            <div className="htp-mode-name">Live Events</div>
+          </div>
+          <ul className="htp-mode-list">
+            <li><span className="dot">▸</span> Optional real-time races</li>
+            <li><span className="dot">▸</span> Only when a broadcast is on</li>
+            <li><span className="dot">▸</span> Same track and leaderboard</li>
+            <li><span className="dot">▸</span> Not required to play</li>
           </ul>
         </div>
       </div>
 
         {/* SECTION LABEL */}
         <div className="htp-section-label">How to Play</div>
-
-        {/* ── LIVE RACE ── */}
-        <div style={{ maxWidth: 680, margin: '0 auto 16px', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="htp-mode-badge live" />
-        <span style={{ fontFamily: "'Inter',Arial,sans-serif", fontSize: 20, fontWeight: 700, color: '#fff' }}>Live Race</span>
-        </div>
-        <div style={{ maxWidth: 680, margin: '0 auto 48px', padding: '0 20px' }}>
-        <img src={online1} alt="Live race guide" style={{ width: '100%', borderRadius: 10, display: 'block' }} />
-        </div>
 
         {/* ── ON-DEMAND ── */}
         <div style={{ maxWidth: 680, margin: '0 auto 16px', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -346,6 +336,15 @@ export default function HowToPlay() {
         </div>
         <div style={{ maxWidth: 680, margin: '0 auto 48px', padding: '0 20px' }}>
         <img src={offlin1} alt="On-Demand race guide" style={{ width: '100%', borderRadius: 10, display: 'block' }} />
+        </div>
+
+        {/* ── LIVE RACE ── */}
+        <div style={{ maxWidth: 680, margin: '0 auto 16px', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="htp-mode-badge live" />
+        <span style={{ fontFamily: "'Inter',Arial,sans-serif", fontSize: 20, fontWeight: 700, color: '#fff' }}>Live Events</span>
+        </div>
+        <div style={{ maxWidth: 680, margin: '0 auto 48px', padding: '0 20px' }}>
+        <img src={online1} alt="Live events guide" style={{ width: '100%', borderRadius: 10, display: 'block' }} />
         </div>
     </div>
   );

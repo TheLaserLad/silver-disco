@@ -250,23 +250,23 @@ export default function HowPointsWork() {
       {/* Tip box */}
       <div className="pts-hint">
         <div className="pts-hint-box">
-          🔴 Live races give the biggest points and are the fastest way to climb. <br />▶️ On-demand races let you earn extra points every day, even outside live hours. Use all 5 daily on-demand races and join the weekday lunch live to maximise your score.
+          On-demand races are open now. Choose your ball, watch the race, and results appear automatically when the race finishes. New races available every day. Live events, when a broadcast is on, use their own points table.
         </div>
       </div>
 
       {/* Points Tables */}
       <div className="pts-section-label">Points Breakdown</div>
       <div className="pts-tables">
-        {/* Live */}
+        {/* On-Demand */}
         <div className="pts-table-card">
-          <div className="pts-table-head live">
-            <div className="pts-table-dot live" />
-            <div className="pts-table-title">Live Races</div>
+          <div className="pts-table-head demand">
+            <div className="pts-table-dot demand" />
+            <div className="pts-table-title">On-Demand</div>
           </div>
           {[
-            { medal: '🥇', place: '1st place', pts: '20' },
-            { medal: '🥈', place: '2nd place', pts: '10' },
-            { medal: '🥉', place: '3rd place', pts: '5' },
+            { medal: '🥇', place: '1st place', pts: '10' },
+            { medal: '🥈', place: '2nd place', pts: '5' },
+            { medal: '🥉', place: '3rd place', pts: '3' },
             { medal: '🎯', place: '4th – 10th', pts: '1' },
             { medal: '⚪', place: '11th+', pts: '0', zero: true },
           ].map(row => (
@@ -280,16 +280,16 @@ export default function HowPointsWork() {
           ))}
         </div>
 
-        {/* On-Demand */}
+        {/* Live */}
         <div className="pts-table-card">
-          <div className="pts-table-head demand">
-            <div className="pts-table-dot demand" />
-            <div className="pts-table-title">On-Demand</div>
+          <div className="pts-table-head live">
+            <div className="pts-table-dot live" />
+            <div className="pts-table-title">Live Events</div>
           </div>
           {[
-            { medal: '🥇', place: '1st place', pts: '10' },
-            { medal: '🥈', place: '2nd place', pts: '5' },
-            { medal: '🥉', place: '3rd place', pts: '3' },
+            { medal: '🥇', place: '1st place', pts: '20' },
+            { medal: '🥈', place: '2nd place', pts: '10' },
+            { medal: '🥉', place: '3rd place', pts: '5' },
             { medal: '🎯', place: '4th – 10th', pts: '1' },
             { medal: '⚪', place: '11th+', pts: '0', zero: true },
           ].map(row => (

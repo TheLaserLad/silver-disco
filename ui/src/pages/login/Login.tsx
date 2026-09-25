@@ -28,33 +28,25 @@ const HomePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [landingData, setLandingData] = useState<any>(null);
+  const [playAfterAuth, setPlayAfterAuth] = useState(false);
   const serverUrl: string | undefined = import.meta.env.VITE_SERVER_URL;
   const navigate = useNavigate();
-  const [timeUntilRace, setTimeUntilRace] = useState<string>("--:--:--");
 
-useEffect(() => {
-  const updateTimer = () => {
-    setTimeUntilRace(getCountdownToRace(landingData?.next_race_time ?? null));
+  const dailyOnDemandLimit = (() => {
+    const raw = landingData?.max_offline_race;
+    const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })();
+  const racesCompleted =
+    typeof landingData?.total_races === "number" ? landingData.total_races : null;
+
+  const homeAfterAuth = playAfterAuth ? "/home?play=1" : "/home";
+
+  const openPlay = () => {
+    setPlayAfterAuth(true);
+    setAuthMode("signup");
   };
 
-  updateTimer();
-  const interval = setInterval(updateTimer, 1000);
-  return () => clearInterval(interval);
-}, [landingData?.next_race_time]);
-
-const getCountdownToRace = (timestamp: number | null) => {
-  if (!timestamp) return "TBD";
-
-  const diffMs = timestamp * 1000 - Date.now();
-  if (diffMs <= 0) return "00:00:00";
-
-  const totalSeconds = Math.floor(diffMs / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-};
   // ✅ Check session
   useEffect(() => {
     if (!serverUrl) {
@@ -98,7 +90,7 @@ const getCountdownToRace = (timestamp: number | null) => {
           { username, password },
           { withCredentials: true }
         );
-        if (res.data?.type === "User") navigate("/home");
+        if (res.data?.type === "User") navigate(homeAfterAuth);
         else if (res.data?.type === "Admin") navigate("/dashboard");
       } else if (authMode === "signup") {
         if (!username || !email || !password || !confirm)
@@ -109,7 +101,7 @@ const getCountdownToRace = (timestamp: number | null) => {
           { username, email, password },
           { withCredentials: true }
         );
-        if (res.data?.user) navigate("/home");
+        if (res.data?.user) navigate(homeAfterAuth);
       }
 
       setAuthMode(null);
@@ -304,7 +296,7 @@ const getCountdownToRace = (timestamp: number | null) => {
       )}
  
 {/* ===== HERO SECTION (With Video Background Placeholder) ===== */}
-      <main className="relative flex flex-col items-center justify-center flex-grow text-center px-6 py-24 overflow-hidden">
+      <main className="relative flex flex-col items-center justify-center flex-grow text-center px-6 py-14 sm:py-24 overflow-hidden">
         {/* Background Video Placeholder */}
         <div className="absolute inset-0 z-0 bg-[#0a0a0a]">
           {/* Served from ui/public/demo.mp4 rather than imported, so the build
@@ -323,13 +315,16 @@ const getCountdownToRace = (timestamp: number | null) => {
         </div>
 
         <div className="relative z-10 flex flex-col items-center">
+          <p className="text-xs sm:text-sm uppercase tracking-[0.25em] text-purple-300 font-semibold mb-4">
+            Open now · Play for free
+          </p>
           <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-500 text-transparent bg-clip-text mb-6">
-            Live Marble Racing. Every Day.
+            Pick a Ball. Win the Race.
           </h1>
           
           <div className="text-gray-300 text-base sm:text-lg max-w-2xl space-y-2 mb-4">
-            <p className="font-semibold text-white text-xl">Enter free. Race live for 1–2 hours daily.</p>
-            <p>Play up to 5 bonus races per day to climb the leaderboard.</p>
+            <p className="font-semibold text-white text-xl">Race for free. Play on-demand.</p>
+            <p>Choose your ball, watch the race on the real track, and results appear automatically when the race finishes. New races available every day.</p>
           </div>
 
           <p className="text-sm text-gray-400 uppercase tracking-widest font-semibold mb-8">
@@ -338,54 +333,56 @@ const getCountdownToRace = (timestamp: number | null) => {
 
           <div className="flex flex-col sm:flex-row gap-4">
             <button
-              onClick={() => setAuthMode("signup")}
+              onClick={openPlay}
               className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 px-8 py-4 rounded-xl text-md font-bold text-white shadow-lg shadow-purple-500/30 transition-all"
             >
-              Join The Next Race
+              Play On-Demand Race
             </button>
             <button
-              onClick={() => setAuthMode("login")}
+              onClick={() => {
+                setPlayAfterAuth(false);
+                setAuthMode("login");
+              }}
               className="border border-gray-600 hover:border-gray-300 px-8 py-4 rounded-xl text-md font-semibold text-gray-300 transition-all bg-black/40 backdrop-blur-sm"
             >
               I already have an account
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => document.getElementById("live-events")?.scrollIntoView({ behavior: "smooth" })}
+            className="mt-5 text-sm text-gray-500 hover:text-gray-300 underline underline-offset-4"
+          >
+            Live Events
+          </button>
         </div>
       </main>
 
-      {/* ===== LIVE ENERGY SECTION ===== */}
+      {/* On-demand status. Counts come only from /landing — nothing is filled in when the API is missing. */}
       <section className="w-full bg-[#161616] border-y border-[#2a2a2a] py-4 px-6 relative z-10">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-center md:justify-between gap-6 text-sm font-medium text-gray-300">
-          
           <div className="flex items-center gap-2">
-            {landingData?.is_live ? (
-                <>
-                <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                <span className="text-white font-semibold">We are Live</span> 
-                </>
-            ) : (
-              <>
-                <span className="text-gray-400 font-semibold">Currently Offline</span>
-                <span className="text-gray-500 mx-2">|</span>
-                <span>
-                  Next Race starts in{" "}
-                  <span className="text-purple-400 font-mono">{timeUntilRace}</span>
-                </span>
-              </>
-            )}
-            </div>
+            <span className="relative flex h-3 w-3">
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+            </span>
+            <span className="text-white font-semibold">Open now</span>
+          </div>
 
           <div className="flex items-center gap-2">
-            👥 {landingData?.last_race_players?.toLocaleString() || 0} players joined the last race
+            Play for free
           </div>
-          
-          <div className="flex items-center gap-2">
-            🏁 {landingData?.total_races?.toLocaleString() || 0} races completed
-          </div>
-          
+
+          {dailyOnDemandLimit !== null && (
+            <div className="flex items-center gap-2">
+              Up to {dailyOnDemandLimit.toLocaleString()} on-demand races a day
+            </div>
+          )}
+
+          {racesCompleted !== null && (
+            <div className="flex items-center gap-2">
+              {racesCompleted.toLocaleString()} races completed
+            </div>
+          )}
         </div>
       </section>
 
@@ -394,27 +391,39 @@ const getCountdownToRace = (timestamp: number | null) => {
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-white">The Daily Format</h2>
           <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-[#1a1a1a] p-8 rounded-2xl border border-[#2a2a2a] hover:border-indigo-500/50 transition-colors">
-              <h3 className="text-xl font-bold text-white mb-4">🔴 Live Event <span className="block text-sm font-normal text-indigo-400 mt-1">(1–2 Hours Daily)</span></h3>
-              <p className="text-gray-400 text-sm mb-4">Compete in real-time marble races during the official broadcast window.</p>
+            <div className="bg-[#1a1a1a] p-8 rounded-2xl border border-purple-500/50 hover:border-purple-400 transition-colors">
+              <h3 className="text-xl font-bold text-white mb-4">
+                On-Demand Races
+                {dailyOnDemandLimit !== null && (
+                  <span className="block text-sm font-normal text-purple-400 mt-1">
+                    Up to {dailyOnDemandLimit.toLocaleString()} a day
+                  </span>
+                )}
+              </h3>
+              <p className="text-gray-400 text-sm mb-4">Choose your ball. Watch the race. Results appear automatically when the race finishes. New races available every day.</p>
               <ul className="text-sm text-gray-300 space-y-2">
-                <li>✨ Major ranking points</li>
-                <li>🎁 Sponsor-backed prize races</li>
-              </ul>
-            </div>
-            
-            <div className="bg-[#1a1a1a] p-8 rounded-2xl border border-[#2a2a2a] hover:border-purple-500/50 transition-colors">
-              <h3 className="text-xl font-bold text-white mb-4">▶️ On-Demand Races <span className="block text-sm font-normal text-purple-400 mt-1">({landingData?.max_offline_race?.toLocaleString() || "5"} Per Day)</span></h3>
-              <p className="text-gray-400 text-sm mb-4">Enter archived races from our physical track. Choose your marble before watching.</p>
-              <ul className="text-sm text-gray-300 space-y-2">
-                <li>🔒 Results are locked & AI-verified</li>
-                <li>📈 Earn ranking points anytime</li>
+                <li>Open now. Play for free.</li>
+                <li>Recorded on the real physical track</li>
+                <li>AI-verified finish order</li>
               </ul>
             </div>
 
             <div className="bg-[#1a1a1a] p-8 rounded-2xl border border-[#2a2a2a] hover:border-pink-500/50 transition-colors">
-              <h3 className="text-xl font-bold text-white mb-4">📊 Season Rankings <span className="block text-sm font-normal text-pink-400 mt-1">(Ongoing)</span></h3>
-              <p className="text-gray-400 text-sm">Every single race matters. All live and on-demand races contribute to your daily, weekly, and seasonal standings.</p>
+              <h3 className="text-xl font-bold text-white mb-4">Season Rankings <span className="block text-sm font-normal text-pink-400 mt-1">Ongoing</span></h3>
+              <p className="text-gray-400 text-sm">Every race counts. On-demand races add to your daily, weekly, and seasonal standings.</p>
+            </div>
+
+            <div id="live-events" className="bg-[#1a1a1a] p-8 rounded-2xl border border-[#2a2a2a] hover:border-indigo-500/40 transition-colors scroll-mt-6">
+              <h3 className="text-xl font-bold text-white mb-4">Live Events <span className="block text-sm font-normal text-gray-500 mt-1">Optional</span></h3>
+              <p className="text-gray-400 text-sm mb-4">
+                {landingData?.is_live
+                  ? "A live broadcast is on. You can race in real time as well. On-demand play does not wait for it."
+                  : "Live broadcasts are extra. You do not need one to play. On-demand races are open now."}
+              </p>
+              <ul className="text-sm text-gray-300 space-y-2">
+                <li>Same track, same leaderboard</li>
+                <li>Join only when a broadcast is on</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -425,10 +434,10 @@ const getCountdownToRace = (timestamp: number | null) => {
         <h2 className="text-3xl md:text-4xl font-bold text-center mb-16 text-white">How It Works</h2>
         <div className="max-w-5xl mx-auto grid sm:grid-cols-2 md:grid-cols-4 gap-8">
           {[
-            { step: "1", title: "Enter For Free", desc: "No cost. No catch." },
-            { step: "2", title: "Pick Your Marble", desc: "Choose your marble before the race starts." },
-            { step: "3", title: "Play Live or On-Demand", desc: "Race in real-time if we're live, or play up to " + (landingData?.max_offline_race?.toLocaleString() || "5") + " on-demand races using real footage." },
-            { step: "4", title: "Climb the Board", desc: "Earn points and compete for sponsored prizes." }
+            { step: "1", title: "Enter For Free", desc: "Open now. Play for free." },
+            { step: "2", title: "Choose your ball", desc: "Pick a ball from 1–15." },
+            { step: "3", title: "Watch the race", desc: "Play an on-demand race filmed on the real track." },
+            { step: "4", title: "Get your result", desc: "Results appear automatically when the race finishes. New races available every day." }
           ].map((item, i) => (
             <div key={i} className="text-center flex flex-col items-center">
               {/* Styled Purple Box */}
@@ -447,7 +456,7 @@ const getCountdownToRace = (timestamp: number | null) => {
         <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-white">What Makes This Different</h2>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
           {[
-            { title: "Real Physical Track", desc: "Every race happens on our custom built marble racetrack." },
+            { title: "Real Physical Track", desc: "Every race happens on our custom built racetrack." },
             { title: "AI Verified Results", desc: "Finish order detected instantly and accurately." },
             { title: "Global Leaderboards", desc: "Compete with players worldwide for the top spot." },
             { title: "Real Rewards", desc: "Win real prizes funded by official sponsors." }
@@ -502,12 +511,12 @@ const getCountdownToRace = (timestamp: number | null) => {
       <section className="py-20 px-6 text-center bg-gradient-to-br from-indigo-900 via-purple-900 to-black border-t border-purple-500/30">
         <h2 className="text-4xl md:text-5xl font-extrabold text-white mb-4 tracking-tight">Don’t Just Watch. Race.</h2>
         <button
-          onClick={() => setAuthMode("signup")}
+          onClick={openPlay}
           className="mt-6 bg-white text-purple-900 px-10 py-4 rounded-xl text-lg font-bold hover:bg-gray-200 transition-colors shadow-xl shadow-black/40"
         >
-          Enter The Next Live Race
+          Play On-Demand Race
         </button>
-        <p className="text-purple-300 mt-4 text-sm font-medium">Free to join.</p>
+        <p className="text-purple-300 mt-4 text-sm font-medium">Free to join. Open now.</p>
       </section>
 
       {/* AUTH MODAL */}

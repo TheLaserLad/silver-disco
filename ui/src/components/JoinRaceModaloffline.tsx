@@ -160,8 +160,8 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
     <>
       <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-[#1a1a1a]">
         <div>
-          <h2 className="text-white font-semibold text-lg">Join On-Demand Race</h2>
-          <p className="text-gray-400 text-xs">Select your ball (1–15)</p>
+          <h2 className="text-white font-semibold text-lg">Play On-Demand Race</h2>
+          <p className="text-gray-400 text-xs">Choose your ball (1–15). Results appear automatically when the race finishes.</p>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-white transition">
           <X size={18} />
@@ -203,7 +203,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
             <span className="animate-pulse">Joining...</span>
           ) : (
             <>
-              Join Race <Play size={16} fill="currentColor" />
+              Watch the race <Play size={16} fill="currentColor" />
             </>
           )}
         </button>
