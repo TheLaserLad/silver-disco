@@ -1,60 +1,58 @@
-# Race Results share cards (offline package)
+# Challenge inbox (offline package)
 
-Gregg asked for this as an offline build. Nothing here was deployed. No growth switch was turned on. Do not copy this onto the live site until you stamp it.
+Gregg asked for this as the next player screen after share cards. Nothing here was deployed. Challenges stays off. Do not copy this onto the live site until you stamp it.
+
+This file replaces the earlier share-card note. The share buttons are still in this same package.
 
 ## What players see while Challenges is off
 
-Race Results stays the screen they have now.
+The site looks as it does today.
 
-- Position and points
-- How many on-demand races are left today (or the daily limit line, if that count is missing)
-- Play the next race
-- Close
+- Home stays the dark on-demand page. There is no Challenges block, no Accept, and no Decline.
+- Race Results still has no Challenge a friend button and no Share this race button.
+- A link such as `https://pinballrace.com/c/…` says the challenge is not open, and sends the person back to Pinball Race. It does not start a race.
 
-There is no Challenge a friend button and no Share this race button. Nothing new to tap, and nothing that leads to a dead end.
+Nothing new to tap, and nothing that leads to a dead end.
 
 ## What players see after you later turn Challenges on
 
-The buttons show up on that same dark Race Results screen, under the races-left line. They do not use up a play. A player can ignore both and just press Close or Play the next race.
+Signed-in players get a Challenges notice on the home screen only when someone has sent them an open bet. If there is nothing waiting, the notice stays hidden.
 
-| Finish | Challenge a friend | Share this race |
-| --- | --- | --- |
-| 1st to 5th | Yes | Yes |
-| 6th to 10th | No | Yes |
-| 11th to 15th | No | No |
-| Shown as 10+ (did not place) | No | No |
+Each row shows who sent it and their finish place, for example: “Beat Ada — finished 3rd.” It does not show which ball they picked, and it does not show which race video it was. Players still pick balls 1–15. The card does not call them pins.
 
-**Challenge a friend** opens a list of people they follow and their friends.
+- **Accept** opens that on-demand race. They pick a ball from 1–15, watch the race, and see results when it finishes. That uses one normal daily play when the play counter is on.
+- **Decline** closes that send.
+- They can also ignore it. An open send lasts 7 days.
 
-- They can send to at most 3 people they follow.
-- Until they have a friend, 3 is also the total.
-- Once they have a friend, they can send 5 in total. The extra places are friends only, not a 4th or 5th person they only follow.
+If the race that created the challenge is no longer available, the screen says so and offers another on-demand race. It does not send them to Live Events or to “No Current Game.”
 
-**Share this race** makes a public link on this site, shaped like `https://pinballrace.com/c/…`. They can use the phone share sheet or copy the link.
+A public link `https://pinballrace.com/c/…` shows the same kind of line, with “win a free race” on the world card. **Play** follows the same on-demand rules.
 
-The card itself only says their username and their place, for example: “Beat Ada — finished 3rd.” The world card adds “win a free race.” It does not say which ball they picked, and it does not say which race video it was. Players still pick balls 1–15. The card does not call them pins.
+Share cards on Race Results are unchanged: 1st–5th can challenge a friend and share, 6th–10th can only share, 11th or worse sees neither. Those buttons still do not use a play.
 
 ## The file to drop later
 
-`ui-dist-post-race-share-cards.tar.gz`
+`ui-dist-challenge-inbox.tar.gz`
 
-- SHA-256: `0ba51fbeb7e3a3d4ad7646a041c84dc39698e8ab80dc535ee7649b3c9cd3f508`
-- Size: 2,951,685 bytes
-- Script file inside it: `assets/index-a4545ed7.js`
+- SHA-256: `58f6ace7fca802f0092b833e44a8a2588acc7c2ce0d7f061b2bd6d1a9b27077c`
+- Size: 2,953,654 bytes
+- Script file inside it: `assets/index-2a9b0780.js`
 
-This is the current dark site, plus the hidden share buttons. It is not a from-scratch rebuild of the older source tree.
+This is the current dark site, plus the hidden share buttons, plus the hidden challenge inbox. It is not a from-scratch rebuild.
 
 When you do stamp a drop onto the website folder, keep the existing `robots.txt`, `sitemap.xml`, and `demo.mp4`. This package does not include those, and unpacking it will not delete them.
 
-## If a send fails after Challenges is on
+## If a button fails after Challenges is on
 
-The player service already has the two create routes (`/challenges/bets` for a friend, `/challenges/public` for the world link). This package does not change that service and does not add a new server.
+The player service already has the inbox and the buttons. This package does not change that service and does not add a new server.
 
-The site sends the signed-in player, the finish place, and (for a friend) who it is for. It does not send a ball number or a race id.
+- Home reads open bets from the inbox.
+- Accept and Decline use the existing bet routes.
+- Play uses the existing challenge play route, and if that race is gone it uses the same on-demand play route as Play On-Demand Race.
 
-If the service refuses the card, the screen says so and does not pretend the card was made. Close and Play the next race still work.
+The card never sends a ball number or a race id to the screen. If the service refuses the action, the screen says so and does not pretend it worked.
 
 ## How to check after a future stamp
 
-1. Leave Challenges off. Finish an on-demand race. Race Results should look as it does today, with no share buttons.
-2. Only after you decide to turn Challenges on: 1st–5th shows both buttons, 6th–10th shows only Share this race, 11th or worse shows neither.
+1. Leave Challenges off. Home should look as it does today. Open a `/c/…` link: it should say the challenge is not open, with no Play button.
+2. Only after you decide to turn Challenges on: a signed-in player with an open bet sees the sender’s name and finish place, and can Accept or Decline. Accept picks a ball and plays an on-demand race. If that race is gone, they get another on-demand race, not Live Events.

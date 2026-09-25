@@ -3,6 +3,7 @@ import { jsx, jsxs } from "react/jsx-runtime";
 import { X, Play, SkipForward, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
 import { createPostRaceShareCards } from "../helpers/growth/shareCards.js";
+import { pickerLine, startChallengePlay } from "../helpers/growth/challengeInbox.js";
 
 const PostRaceShareCards = createPostRaceShareCards({
   useState,
@@ -59,6 +60,8 @@ const balls = importedBalls.map((img, index) => ({
 
 interface JoinRaceModalProps {
   onClose: () => void;
+  /** Set only after Challenges is on. A normal on-demand race leaves this unset. */
+  challengeId?: string;
 }
 
 // Define the structure of the API response
@@ -71,7 +74,7 @@ interface OfflineGameResult {
 
 type ModalStep = 'select' | 'video' | 'result';
 
-const JoinRaceModal: FC<JoinRaceModalProps> = ({ onClose }) => {
+const JoinRaceModal: FC<JoinRaceModalProps> = ({ onClose, challengeId }) => {
   // UI State
   const [step, setStep] = useState<ModalStep>('select');
   const [loading, setLoading] = useState(false);
@@ -146,26 +149,37 @@ const JoinRaceModal: FC<JoinRaceModalProps> = ({ onClose }) => {
     setLoading(true);
 
     try {
-      const res = await fetch(`${serverUrl}/api/games/offline/url`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId: userId, ball_id: selectedBall }),
-      });
+      const result: OfflineGameResult = challengeId
+        ? await startChallengePlay({
+            challengeId,
+            userId,
+            ballId: selectedBall,
+            playerBase: serverurl1,
+            pyBase: serverUrl,
+            onNotice: (message: string) => toast.info(message),
+          })
+        : await (async () => {
+            const res = await fetch(`${serverUrl}/api/games/offline/url`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ userId: userId, ball_id: selectedBall }),
+            });
 
-      if (!res.ok) {
-        let errorDetail = "Failed to join race";
-        try {
-          const errorBody = await res.json();
-          if (errorBody && errorBody.detail) errorDetail = errorBody.detail;
-        } catch (e) {
-          errorDetail = `Server returned status ${res.status}`;
-        }
-        throw new Error(errorDetail);
-      }
+            if (!res.ok) {
+              let errorDetail = "Failed to join race";
+              try {
+                const errorBody = await res.json();
+                if (errorBody && errorBody.detail) errorDetail = errorBody.detail;
+              } catch (e) {
+                errorDetail = `Server returned status ${res.status}`;
+              }
+              throw new Error(errorDetail);
+            }
 
-      const result: OfflineGameResult = await res.json();
+            return res.json();
+          })();
       
       // Store result and switch to video view
       setGameResult(result);
@@ -189,8 +203,8 @@ const JoinRaceModal: FC<JoinRaceModalProps> = ({ onClose }) => {
     <>
       <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-[#1a1a1a]">
         <div>
-          <h2 className="text-white font-semibold text-lg">Join On-Demand Race</h2>
-          <p className="text-gray-400 text-xs">Select your ball (1–15)</p>
+          <h2 className="text-white font-semibold text-lg">{challengeId ? "Play this challenge" : "Join On-Demand Race"}</h2>
+          <p className="text-gray-400 text-xs">{challengeId ? pickerLine(challengeId) : "Select your ball (1–15)"}</p>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-white transition">
           <X size={18} />
