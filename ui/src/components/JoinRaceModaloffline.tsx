@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Play, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
+import { readRaceResult } from "../helpers/growth/flags";
 
 // Import images (keeping your existing imports)
 import Ball1 from "../assets/balls/1.png";
@@ -32,6 +33,11 @@ const balls = importedBalls.map((img, index) => ({
 
 interface JoinRaceModalProps {
   onClose: () => void;
+  /**
+   * Set only after the challenges switch is on.
+   * A normal on-demand race leaves this unset and still uses /api/games/offline/url.
+   */
+  challengeId?: string;
 }
 
 // Define the structure of the API response.
@@ -313,7 +319,7 @@ const RaceNext: React.FC<{
   );
 };
 
-const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
+const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose, challengeId }) => {
   // UI State
   const [step, setStep] = useState<ModalStep>('select');
   const [loading, setLoading] = useState(false);
@@ -561,13 +567,20 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
     setLoading(true);
 
     try {
-      const res = await fetch(`${serverUrl}/api/games/offline/url`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId: userId, ball_id: selectedBall }),
-      });
+      const res = challengeId
+        ? await fetch(`${serverurl1}/challenges/${encodeURIComponent(challengeId)}/play`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, ball_id: selectedBall, challengeId }),
+          })
+        : await fetch(`${serverUrl}/api/games/offline/url`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ userId: userId, ball_id: selectedBall }),
+          });
 
       if (!res.ok) {
         let errorDetail = "Failed to join race";
@@ -581,7 +594,11 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
         throw new Error(errorDetail);
       }
 
-      const result: OfflineGameResult = await res.json();
+      const raw = await res.json();
+      const result: OfflineGameResult | null = challengeId ? readRaceResult(raw) : raw;
+      if (challengeId && !result?.video_link) {
+        throw new Error("This challenge did not open a race.");
+      }
 
       // Store result and switch to video view
       setGameResult(result);
@@ -601,8 +618,12 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
     <>
       <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-[#1a1a1a]">
         <div>
-          <h2 className="text-white font-semibold text-lg">Play On-Demand Race</h2>
-          <p className="text-gray-400 text-xs">Choose your ball (1–15). Results appear automatically when the race finishes.</p>
+          <h2 className="text-white font-semibold text-lg">{challengeId ? "Challenge race" : "Play On-Demand Race"}</h2>
+          <p className="text-gray-400 text-xs">
+            {challengeId
+              ? "Choose your ball (1–15). This opens that race. Results appear automatically when it finishes."
+              : "Choose your ball (1–15). Results appear automatically when the race finishes."}
+          </p>
         </div>
         <button onClick={onClose} className="text-gray-400 hover:text-white transition">
           <X size={18} />

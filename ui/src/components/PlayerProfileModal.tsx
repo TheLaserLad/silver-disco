@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { X, User, Flame } from "lucide-react";
+import { FollowButton } from "./growth/GrowthSurfaces";
 
 /** The full /api/player/{id}/profile payload — account.tsx only reads a subset. */
 interface PlayerProfile {
@@ -167,6 +168,7 @@ const PlayerProfileModal: React.FC<Props> = ({ userId, username, onClose }) => {
                   {identity?.country || "No country set"}
                   {joined && ` • joined ${joined}`}
                 </p>
+                <FollowButton userId={userId} />
               </div>
             </div>
 

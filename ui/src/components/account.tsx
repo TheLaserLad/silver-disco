@@ -22,6 +22,7 @@ import NotificationSettings from "./NotificationSettings";
 import SecuritySettings from "./SecuritySettings";
 import { COUNTRIES } from "../helpers/country/countries";
 import { avatarUrl } from "../helpers/avatar/avatarUrl";
+import { ProfileFriends } from "./growth/GrowthSurfaces";
 import axios from "axios";
 
 
@@ -400,7 +401,7 @@ const AccountScreen: React.FC = () => {
             )}
           </div>
 
-
+          <ProfileFriends />
 
           {/* Connected Accounts */}
           <div className="mb-10 mt-6">
