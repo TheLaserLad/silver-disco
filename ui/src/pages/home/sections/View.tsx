@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { jsx, jsxs } from "react/jsx-runtime";
+import { useSearchParams } from "react-router-dom";
 import PinballRaceHeader from "../../../components/PinballRaceHeader";
 import LiveStreamCard from "../../../components/LiveStreamCard";
 import RaceDashboard from "../../../components/RaceDashboard";
@@ -7,6 +9,14 @@ import Leaderboard from "../../../components/Leaderboard";
 import Data from "../../../components/data";
 import AccountScreen from "../../../components/account";
 import JoinRaceModal from "../../../components/JoinRaceModaloffline";
+import { createChallengeInbox, loadChallengesOpen } from "../../../helpers/growth/challengeInbox.js";
+
+const ChallengeInboxPanel = createChallengeInbox({
+  useState,
+  useEffect,
+  jsx,
+  jsxs,
+});
 
 type ActiveTab = "Home" | "Winners" | "Data" | "Profile";
 
@@ -19,6 +29,8 @@ interface UserState {
 const PinballRaceHome: React.FC = () => {
   // ✅ Load saved tab from localStorage, or default to "Home"
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
+  const [challengeId, setChallengeId] = useState<string | undefined>(undefined);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const savedTab = localStorage.getItem("activeTab") as ActiveTab | null;
     return savedTab || "Home";
@@ -73,6 +85,49 @@ const PinballRaceHome: React.FC = () => {
 
     fetchUser();
   }, []);
+
+  // A challenge link opens the on-demand picker only when Challenges is on.
+  useEffect(() => {
+    const fromQuery = searchParams.get("challenge");
+    const playNow = searchParams.get("play") === "1";
+    let stored: string | null = null;
+    try {
+      stored = sessionStorage.getItem("pinballrace.challenge");
+    } catch {
+      stored = null;
+    }
+    const id = fromQuery || stored;
+    if (!id && !playNow) return undefined;
+    let cancel = false;
+    const serverUrl = import.meta.env.VITE_SERVER_URL || "https://pinballrace.com:8080";
+    loadChallengesOpen(serverUrl).then((open) => {
+      if (cancel) return;
+      try {
+        sessionStorage.removeItem("pinballrace.challenge");
+      } catch {
+        // Ignore private-mode storage.
+      }
+      if (fromQuery || playNow) {
+        const next = new URLSearchParams(searchParams);
+        next.delete("challenge");
+        next.delete("play");
+        setSearchParams(next, { replace: true });
+      }
+      if (playNow && !id) {
+        setChallengeId(undefined);
+        setIsRaceModalOpen(true);
+        return;
+      }
+      if (open && id) {
+        setChallengeId(id);
+        setIsRaceModalOpen(true);
+        setActiveTab("Home");
+      }
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [searchParams, setSearchParams]);
 // add a button that will call offline game when cliecked call join race model but the ball selected will be for offline game
 // that ball selected will be sent to offline game and the user will be able to play offline game with that ball
 // returning the url from the backend and opening it in a new tab
@@ -94,15 +149,29 @@ const PinballRaceHome: React.FC = () => {
                 setLeaderboardTab("Competitions");
               }}
             />
+            <ChallengeInboxPanel
+              apiBase={import.meta.env.VITE_SERVER_URL || "https://pinballrace.com:8080"}
+              onPlay={(id: string) => {
+                setChallengeId(id);
+                setIsRaceModalOpen(true);
+              }}
+            />
             <button
             className="w-full bg-[#121212] text-white font-semibold py-2 rounded-3xl border border-[#522cab] hover:border-blue-600 hover:bg-[#0a0a0a] transition shadow-[0_0_15px_rgba(82,44,171,0.3)]"
-            onClick={() => setIsRaceModalOpen(true)}
+            onClick={() => {
+              setChallengeId(undefined);
+              setIsRaceModalOpen(true);
+            }}
         >
             Play On-Demand Race
         </button>
         {isRaceModalOpen && (
         <JoinRaceModal 
-          onClose={() => setIsRaceModalOpen(false)}
+          challengeId={challengeId}
+          onClose={() => {
+            setChallengeId(undefined);
+            setIsRaceModalOpen(false);
+          }}
           />
         )}
           </>

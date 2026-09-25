@@ -18,6 +18,7 @@ import TermsOfService from "./pages/terms/TermsOfService";
 import PrivacyPolicy from "./pages/privacy/PrivacyPolicy";
 import Leaderboard from "./pages/leaderboard/Leaderboard";
 import Viewleaderboard from "./pages/leaderboard/sections/View";
+import ChallengePage from "./pages/growth/ChallengePage";
 
 const router = createBrowserRouter([
   {
@@ -109,6 +110,11 @@ const router = createBrowserRouter([
         element: <DashboardView />,
       },
     ],
+  },
+  {
+    path: "/c/:id",
+    element: <ChallengePage />,
+    errorElement: <ErrorPage />,
   },
   {
     path: "/enter_address",
