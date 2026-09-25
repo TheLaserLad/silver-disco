@@ -281,6 +281,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   const [gameResult, setGameResult] = useState<OfflineGameResult | null>(null);
   const [dailyCap, setDailyCap] = useState<number | null>(null);
   const [noneLeft, setNoneLeft] = useState(false);
+  const [holdPlayback, setHoldPlayback] = useState(false);
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -333,7 +334,9 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
 
     const markStarted = () => {
       startedRef.current = true;
+      setHoldPlayback(true);
     };
+    setHoldPlayback(false);
     let resumeTimer = 0;
     const onMessage = (event: MessageEvent) => {
       let data: unknown = event.data;
@@ -527,9 +530,10 @@ const renderVideoStep = () => (
             autoPlay
             muted
             playsInline
-            className="w-full h-full bg-black pointer-events-none"
+            className={`w-full h-full bg-black${holdPlayback ? " pointer-events-none" : ""}`}
             onPlay={() => {
               startedRef.current = true;
+              setHoldPlayback(true);
             }}
             onPause={() => {
               window.setTimeout(() => {
@@ -545,7 +549,7 @@ const renderVideoStep = () => (
             ref={iframeRef}
             src={playback.src}
             title="Race Video"
-            className="w-full h-full pointer-events-none"
+            className={`w-full h-full${holdPlayback ? " pointer-events-none" : ""}`}
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
