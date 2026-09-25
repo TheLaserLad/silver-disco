@@ -7,6 +7,9 @@ import Leaderboard from "../../../components/Leaderboard";
 import Data from "../../../components/data";
 import AccountScreen from "../../../components/account";
 import JoinRaceModal from "../../../components/JoinRaceModaloffline";
+import { GrowthHome, PlaysLeftNote } from "../../../components/growth/GrowthSurfaces";
+import { CHALLENGE_RETURN_KEY, shouldStartChallenge } from "../../../helpers/growth/flags";
+import { loadGrowthSnapshot } from "../../../helpers/growth/client";
 
 type ActiveTab = "Home" | "Winners" | "Data" | "Profile";
 
@@ -27,6 +30,7 @@ const PinballRaceHome: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   // ✅ Load saved tab from localStorage, or default to "Home"
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
+  const [challengeId, setChallengeId] = useState<string | undefined>(undefined);
   const [dailyOnDemandLimit, setDailyOnDemandLimit] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const savedTab = localStorage.getItem("activeTab") as ActiveTab | null;
@@ -111,10 +115,47 @@ const PinballRaceHome: React.FC = () => {
   // Public "Play On-Demand Race" sends new accounts here so the Bunny modal opens.
   useEffect(() => {
     if (searchParams.get("play") !== "1") return;
+    setChallengeId(undefined);
     setIsRaceModalOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete("play");
     setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // A challenge link only opens the race modal when that switch is on.
+  useEffect(() => {
+    const fromQuery = searchParams.get("challenge");
+    let stored: string | null = null;
+    try {
+      stored = sessionStorage.getItem(CHALLENGE_RETURN_KEY);
+    } catch {
+      stored = null;
+    }
+    const id = fromQuery || stored;
+    if (!id) return;
+
+    let cancel = false;
+    const serverUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
+    loadGrowthSnapshot(serverUrl).then((snap) => {
+      if (cancel) return;
+      try {
+        sessionStorage.removeItem(CHALLENGE_RETURN_KEY);
+      } catch {
+        // Storage can be blocked. The query param is still cleared below.
+      }
+      if (fromQuery) {
+        const next = new URLSearchParams(searchParams);
+        next.delete("challenge");
+        setSearchParams(next, { replace: true });
+      }
+      if (!shouldStartChallenge(snap, id)) return;
+      setChallengeId(id);
+      setIsRaceModalOpen(true);
+    });
+
+    return () => {
+      cancel = true;
+    };
   }, [searchParams, setSearchParams]);
 
   return (
@@ -156,11 +197,15 @@ const PinballRaceHome: React.FC = () => {
                   </p>
                 )}
                 <button
-                  onClick={() => setIsRaceModalOpen(true)}
+                  onClick={() => {
+                    setChallengeId(undefined);
+                    setIsRaceModalOpen(true);
+                  }}
                   className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 px-8 py-4 rounded-xl text-md font-bold text-white shadow-lg shadow-purple-500/30 transition-all"
                 >
                   Play On-Demand Race
                 </button>
+                <PlaysLeftNote />
               </div>
             </section>
 
@@ -179,6 +224,13 @@ const PinballRaceHome: React.FC = () => {
               </div>
             </section>
 
+            <GrowthHome
+              onWatchChallenge={(id) => {
+                setChallengeId(id);
+                setIsRaceModalOpen(true);
+              }}
+            />
+
             <section id="live-events" className="px-4 py-12 bg-[#111111] border-t border-[#1e1e1e]">
               <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3 text-white">Live Events</h2>
               <p className="text-gray-400 text-sm text-center max-w-xl mx-auto mb-2">
@@ -194,7 +246,13 @@ const PinballRaceHome: React.FC = () => {
             </section>
 
             {isRaceModalOpen && (
-              <JoinRaceModal onClose={() => setIsRaceModalOpen(false)} />
+              <JoinRaceModal
+                challengeId={challengeId}
+                onClose={() => {
+                  setChallengeId(undefined);
+                  setIsRaceModalOpen(false);
+                }}
+              />
             )}
           </>
         )}

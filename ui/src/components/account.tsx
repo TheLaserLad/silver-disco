@@ -22,6 +22,8 @@ import NotificationSettings from "./NotificationSettings";
 import SecuritySettings from "./SecuritySettings";
 import { COUNTRIES } from "../helpers/country/countries";
 import { avatarUrl } from "../helpers/avatar/avatarUrl";
+import { ProfileFriends } from "./growth/GrowthSurfaces";
+import { loadSignedInPlayer } from "../helpers/session/player";
 import axios from "axios";
 
 
@@ -119,55 +121,68 @@ const AccountScreen: React.FC = () => {
   const logout = async () => {
     try {
       await axios.post(`${serverUrl}/unrestricted/logout`, {}, { withCredentials: true });
-      // Redirect to login page
       window.location.href = "/";
     } catch (err) {
       console.error("Logout failed:", err);
     }
   };
 
-  // Fetch user data and stats
+  // Fetch user data and stats. /api/user/me 404s on the live player API, so
+  // this also reads /get_profile and the userId cookie. Stats failing must
+  // not wipe a player we already found — that was the "No user data found" path.
   useEffect(() => {
   const fetchUserAndStats = async () => {
     try {
-      // Fetch user info
-      const userRes = await fetch(`${serverUrl}/api/user/me`, {
-        credentials: "include",
-      });
-      const userJson = await userRes.json();
-      if (userJson.user) setUserData(userJson.user);
+      const player = await loadSignedInPlayer(serverUrl);
+      if (player) {
+        setUserData({
+          _id: player._id,
+          username: player.username,
+          email: player.email,
+          pfp: player.pfp,
+          connectedAccounts: {
+            google: player.connectedAccounts?.google === true,
+            tiktok: player.connectedAccounts?.tiktok === true,
+            twitch: player.connectedAccounts?.twitch === true,
+          },
+        });
+      }
 
-      // Fetch stats for logged-in usersendinf useremail
-      const statsRes = await fetch(`${import.meta.env.VITE_PY_SERVER_URL}/api/user/stats`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ email: userJson.user._id }),
-      });
-      const statsJson: StatsData = await statsRes.json();
+      if (!player?._id) return;
 
-      // Map stats to frontend Stat[]. Note statsJson.streak is winningStreak —
-      // consecutive *wins*, not the daily-participation streak below.
-      setStats([
-        { icon: Flag, value: statsJson.totalRaces ?? 0, label: "Races" },
-        { icon: Clock, value: statsJson.points ?? 0, label: "Points", color: "text-green-400" },
-        { icon: Award, value: statsJson.streak ?? 0, label: "Win Streak" },
-        { icon: Trophy, value: statsJson.totalWins ?? 0, label: "Wins" },
-      ]);
+      try {
+        const statsRes = await fetch(`${import.meta.env.VITE_PY_SERVER_URL}/api/user/stats`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ email: player._id }),
+        });
+        if (statsRes.ok) {
+          const statsJson: StatsData & { username?: string } = await statsRes.json();
+          if (statsJson.username) {
+            setUserData((prev) => (prev ? { ...prev, username: prev.username || statsJson.username } : prev));
+          }
+          setStats([
+            { icon: Flag, value: statsJson.totalRaces ?? 0, label: "Races" },
+            { icon: Clock, value: statsJson.points ?? 0, label: "Points", color: "text-green-400" },
+            { icon: Award, value: statsJson.streak ?? 0, label: "Win Streak" },
+            { icon: Trophy, value: statsJson.totalWins ?? 0, label: "Wins" },
+          ]);
+        }
+      } catch (err) {
+        console.error("Failed to fetch user stats:", err);
+      }
 
-      // Daily streak + weekly championship standing. Fetched separately so a
-      // failure here still leaves the stats above rendered.
       try {
         const profileRes = await fetch(
-          `${import.meta.env.VITE_PY_SERVER_URL}/api/player/${userJson.user._id}/profile`
+          `${import.meta.env.VITE_PY_SERVER_URL}/api/player/${player._id}/profile`
         );
         if (profileRes.ok) setProfile(await profileRes.json());
       } catch (err) {
         console.error("Failed to fetch player profile:", err);
       }
-
     } catch (err) {
       console.error("Failed to fetch user or stats:", err);
     } finally {
@@ -225,7 +240,19 @@ const AccountScreen: React.FC = () => {
   }
 
   if (!userData) {
-    return <div className="flex justify-center items-center h-screen text-gray-400">No user data found.</div>;
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-gray-400 gap-4">
+        <p>No user data found.</p>
+        <button
+          type="button"
+          onClick={logout}
+          className="flex items-center space-x-2 text-red-500 font-semibold text-lg p-3 rounded-xl hover:bg-[#1c1c22] transition"
+        >
+          <LogOut size={20} />
+          <span>Log out</span>
+        </button>
+      </div>
+    );
   }
 
   const connectedAccounts: ConnectedAccount[] = [
@@ -302,7 +329,7 @@ const AccountScreen: React.FC = () => {
                 />
               </div>
               <div>
-                <p className="text-lg font-semibold">{userData.username}</p>
+                <p className="text-lg font-semibold">{userData.username || "Player"}</p>
                 <p className="text-sm text-gray-400">{userData.email}</p>
               </div>
               <p className="ml-auto text-sm text-gray-500 hidden sm:block">ID: {userData.clientToken}</p>
@@ -400,7 +427,7 @@ const AccountScreen: React.FC = () => {
             )}
           </div>
 
-
+          <ProfileFriends />
 
           {/* Connected Accounts */}
           <div className="mb-10 mt-6">

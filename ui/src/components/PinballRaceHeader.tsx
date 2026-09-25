@@ -67,6 +67,24 @@ const PinballRaceHeader: React.FC<Props> = ({
     setSidebarOpen(false);
   };
 
+  const logout = async () => {
+    const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+    try {
+      const res = await fetch(`${serverUrl}/unrestricted/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        console.error("Logout failed:", res.status);
+        return;
+      }
+    } catch (err) {
+      console.error("Logout failed:", err);
+      return;
+    }
+    window.location.href = "/";
+  };
+
   const navItems: { label: string; page: ActivePage }[] = [
     { label: "How to Play",      page: "how-to-play" },
     { label: "How Points Work",  page: "how-points-work" },
@@ -133,6 +151,8 @@ const PinballRaceHeader: React.FC<Props> = ({
           paddingLeft: "24px",
           paddingRight: "24px",
           fontFamily: "Arial, Inter, sans-serif",
+          // Closed, this panel sits off-screen. It must not eat taps on the ball grid.
+          pointerEvents: sidebarOpen ? "auto" : "none",
         }}
       >
         {navItems.map((item) => (
@@ -154,6 +174,24 @@ const PinballRaceHeader: React.FC<Props> = ({
             {item.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={logout}
+          style={{
+            marginTop: "auto",
+            marginBottom: "32px",
+            background: "none",
+            border: "none",
+            color: "#f87171",
+            fontSize: "15px",
+            textAlign: "left",
+            padding: "14px 0",
+            cursor: "pointer",
+            fontFamily: "Arial, Inter, sans-serif",
+          }}
+        >
+          Log out
+        </button>
       </div>
 
       {/* Full-screen overlay */}
