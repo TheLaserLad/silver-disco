@@ -162,25 +162,68 @@ function resolvePlayback(videoLink: string): Playback {
   };
 }
 
-function postToPlayer(frame: HTMLIFrameElement | null) {
+const PLAYER_EVENTS = ["ended", "timeupdate", "play", "pause", "ready", "error"] as const;
+
+function playerCall(method: string, value?: unknown, listener?: string) {
+  const payload: Record<string, unknown> = { context: "player.js", version: "0.0.11", method };
+  if (value !== undefined) payload.value = value;
+  if (listener) payload.listener = listener;
+  return payload;
+}
+
+function sendToFrame(frame: HTMLIFrameElement | null, payload: object) {
   const win = frame?.contentWindow;
   if (!win) return;
-  const send = (payload: object) => {
+  try {
+    win.postMessage(JSON.stringify(payload), "*");
+  } catch {
+    /* player not ready */
+  }
+}
+
+// Bunny's player drops addEventListener unless a listener id is included, and
+// then it never posts ended or timeupdate. That is why a finished race stayed
+// on screen after Skip was removed.
+function subscribePlayer(frame: HTMLIFrameElement | null) {
+  sendToFrame(frame, { event: "listening", id: "ondemand-race", channel: "widget" });
+  PLAYER_EVENTS.forEach((event) => {
+    sendToFrame(frame, playerCall("addEventListener", event, `ondemand-${event}`));
+  });
+  sendToFrame(frame, playerCall("getCurrentTime", undefined, "ondemand-now"));
+  sendToFrame(frame, playerCall("getDuration", undefined, "ondemand-dur"));
+  sendToFrame(frame, playerCall("getPaused", undefined, "ondemand-paused"));
+}
+
+function kickPlay(frame: HTMLIFrameElement | null) {
+  sendToFrame(frame, { event: "command", func: "playVideo", args: [] });
+  sendToFrame(frame, { event: "command", func: "unMute", args: [] });
+  sendToFrame(frame, playerCall("play"));
+  sendToFrame(frame, playerCall("unmute"));
+}
+
+function finiteNumber(value: unknown): number | null {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+function timingFrom(value: unknown): { seconds: number; duration: number | null } | null {
+  let data = value;
+  if (typeof data === "string") {
     try {
-      win.postMessage(JSON.stringify(payload), "*");
+      data = JSON.parse(data);
     } catch {
-      /* player not ready */
+      return null;
     }
-  };
-  send({ event: "listening", id: "ondemand-race", channel: "widget" });
-  send({ event: "command", func: "playVideo", args: [] });
-  send({ event: "command", func: "unMute", args: [] });
-  send({ context: "player.js", version: "0.0.11", method: "play" });
-  send({ context: "player.js", version: "0.0.11", method: "unmute" });
-  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "ended" });
-  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "play" });
-  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "pause" });
-  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "ready" });
+  }
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const seconds = finiteNumber(record.seconds ?? record.currentTime);
+  if (seconds === null) return null;
+  return { seconds, duration: finiteNumber(record.duration) };
+}
+
+function nearEnd(seconds: number, duration: number | null, slop = 0.75): boolean {
+  return duration !== null && duration > 1 && seconds >= duration - slop;
 }
 
 function messageMeansPlaying(data: Record<string, unknown>): boolean {
@@ -210,8 +253,8 @@ function allowanceFrom(result: OfflineGameResult | null, landingCap: number | nu
 }
 
 function messageMeansEnded(data: Record<string, unknown>): boolean {
-  if (data.event === "ended" || data.event === "finish") return true;
-  if (data.context === "player.js" && (data.event === "ended" || data.event === "finish")) return true;
+  const event = typeof data.event === "string" ? data.event.toLowerCase() : "";
+  if (event === "ended" || event === "finish" || event === "complete" || event === "end") return true;
   if (data.event === "onStateChange" || data.event === "infoDelivery") {
     const info = data.info;
     const state = typeof info === "number" ? info : info && typeof info === "object" ? (info as { playerState?: number }).playerState : undefined;
@@ -337,7 +380,41 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
       setHoldPlayback(true);
     };
     setHoldPlayback(false);
+    let knownDuration: number | null = null;
+    let lastSeconds = -1;
+    let lastMoveAt = Date.now();
     let resumeTimer = 0;
+
+    const noteProgress = (seconds: number, duration: number | null) => {
+      if (seconds > 0.2) markStarted();
+      if (duration !== null && duration > 1) knownDuration = duration;
+      if (seconds > lastSeconds + 0.05) {
+        lastSeconds = seconds;
+        lastMoveAt = Date.now();
+      } else if (seconds > lastSeconds) {
+        lastSeconds = seconds;
+      }
+      if (nearEnd(lastSeconds, knownDuration)) finishRace();
+    };
+
+    const stalledAtEnd = () => {
+      if (!startedRef.current || finishedRef.current || knownDuration === null) return false;
+      const quietFor = Date.now() - lastMoveAt;
+      // Only the last couple of seconds. A pause in the middle must not open results.
+      return quietFor > 2000 && lastSeconds > 0.5 && lastSeconds >= knownDuration - 2;
+    };
+
+    const resumeIfMidRace = () => {
+      window.clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(() => {
+        if (finishedRef.current || stalledAtEnd()) {
+          if (stalledAtEnd()) finishRace();
+          return;
+        }
+        kickPlay(iframeRef.current);
+      }, 400);
+    };
+
     const onMessage = (event: MessageEvent) => {
       let data: unknown = event.data;
       if (typeof data === "string") {
@@ -349,32 +426,89 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
       }
       if (!data || typeof data !== "object") return;
       const record = data as Record<string, unknown>;
-      if (record.event === "ready") postToPlayer(iframeRef.current);
+      const eventName = typeof record.event === "string" ? record.event : "";
+      const listener = typeof record.listener === "string" ? record.listener : "";
+
+      if (eventName === "ready") subscribePlayer(iframeRef.current);
       if (messageMeansPlaying(record)) markStarted();
-      const explicitEnd = record.event === "ended" || record.event === "finish";
+
+      if (eventName === "timeupdate" || listener === "ondemand-timeupdate") {
+        const timing = timingFrom(record.value);
+        if (timing) noteProgress(timing.seconds, timing.duration);
+      }
+      if (eventName === "infoDelivery" || eventName === "onStateChange") {
+        const timing = timingFrom(record.info);
+        if (timing) noteProgress(timing.seconds, timing.duration);
+      }
+      if (eventName === "getCurrentTime" || listener === "ondemand-now") {
+        const seconds = finiteNumber(record.value);
+        if (seconds !== null) noteProgress(seconds, knownDuration);
+      }
+      if (eventName === "getDuration" || listener === "ondemand-dur") {
+        const duration = finiteNumber(record.value);
+        if (duration !== null) noteProgress(Math.max(lastSeconds, 0), duration);
+      }
+
+      const explicitEnd = eventName === "ended" || eventName === "finish" || eventName === "complete";
       if (explicitEnd || (messageMeansEnded(record) && startedRef.current)) {
         finishRace();
         return;
       }
-      // Bunny's large Play button is its own paused-state control. If playback
-      // stalls, start it again so the race is not waiting on a tap.
-      if (record.event === "pause" && !finishedRef.current) {
-        window.clearTimeout(resumeTimer);
-        resumeTimer = window.setTimeout(() => {
-          if (!finishedRef.current) postToPlayer(iframeRef.current);
-        }, 400);
+
+      const paused = (eventName === "pause" || listener === "ondemand-pause") ||
+        ((eventName === "getPaused" || listener === "ondemand-paused") && record.value === true);
+      if (paused && !finishedRef.current) {
+        if (knownDuration !== null && lastSeconds >= knownDuration - 2) {
+          finishRace();
+          return;
+        }
+        resumeIfMidRace();
       }
     };
     window.addEventListener("message", onMessage);
 
+    const watch = window.setInterval(() => {
+      if (finishedRef.current) return;
+      if (stalledAtEnd()) {
+        finishRace();
+        return;
+      }
+      subscribePlayer(iframeRef.current);
+      const node = videoRef.current;
+      if (node && playback.kind === "video") {
+        noteProgress(node.currentTime || 0, Number.isFinite(node.duration) ? node.duration : null);
+        if (node.ended) finishRace();
+      }
+    }, 1000);
+
     const kick = window.setInterval(() => {
-      if (!finishedRef.current) postToPlayer(iframeRef.current);
+      if (!finishedRef.current) kickPlay(iframeRef.current);
     }, 700);
     const stopKicking = window.setTimeout(() => window.clearInterval(kick), 8000);
-    postToPlayer(iframeRef.current);
+    subscribePlayer(iframeRef.current);
+    kickPlay(iframeRef.current);
 
     const video = videoRef.current;
+    const onVideoTime = () => {
+      if (!video) return;
+      noteProgress(video.currentTime || 0, Number.isFinite(video.duration) ? video.duration : null);
+    };
+    const onVideoPause = () => {
+      window.setTimeout(() => {
+        if (!video || finishedRef.current || video.ended) return;
+        const duration = Number.isFinite(video.duration) ? video.duration : null;
+        if (nearEnd(video.currentTime || 0, duration, 1.25)) {
+          finishRace();
+          return;
+        }
+        video.play().catch(() => undefined);
+      }, 400);
+    };
+    const onVideoEnded = () => finishRace();
     if (video && playback.kind === "video") {
+      video.addEventListener("timeupdate", onVideoTime);
+      video.addEventListener("pause", onVideoPause);
+      video.addEventListener("ended", onVideoEnded);
       video.muted = true;
       const attempt = video.play();
       if (attempt) {
@@ -393,9 +527,15 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
 
     return () => {
       window.removeEventListener("message", onMessage);
+      window.clearInterval(watch);
       window.clearInterval(kick);
       window.clearTimeout(stopKicking);
       window.clearTimeout(resumeTimer);
+      if (video) {
+        video.removeEventListener("timeupdate", onVideoTime);
+        video.removeEventListener("pause", onVideoPause);
+        video.removeEventListener("ended", onVideoEnded);
+      }
     };
   }, [step, playback?.src]);
 
@@ -535,13 +675,6 @@ const renderVideoStep = () => (
               startedRef.current = true;
               setHoldPlayback(true);
             }}
-            onPause={() => {
-              window.setTimeout(() => {
-                const video = videoRef.current;
-                if (!video || finishedRef.current || video.ended) return;
-                video.play().catch(() => undefined);
-              }, 400);
-            }}
             onEnded={() => finishRace()}
           />
         ) : playback?.kind === "iframe" ? (
@@ -552,8 +685,12 @@ const renderVideoStep = () => (
             className={`w-full h-full${holdPlayback ? " pointer-events-none" : ""}`}
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
-            onLoad={() => postToPlayer(iframeRef.current)}
+            onLoad={() => {
+              subscribePlayer(iframeRef.current);
+              kickPlay(iframeRef.current);
+            }}
           />
         ) : (
             <div className="text-white text-xl">Video not available</div>
