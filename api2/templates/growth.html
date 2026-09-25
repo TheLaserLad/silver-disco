@@ -1,0 +1,311 @@
+<!-- templates/growth.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Growth - Admin Dashboard</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    .banner { padding: 0.9rem 1rem; border-radius: 8px; margin-bottom: 1rem; }
+    .banner-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+    .banner-ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+    .banner-bad { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+    .banner-lock { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .switch-row, .number-grid { display: grid; gap: 0.75rem; }
+    .number-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .switch-row { grid-template-columns: 1fr; }
+    .switch-item, .number-item {
+      background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.9rem 1rem;
+    }
+    .switch-item label { display: flex; align-items: center; gap: 0.6rem; margin: 0; cursor: pointer; }
+    .switch-item input[type="checkbox"] { width: 1.15rem; height: 1.15rem; }
+    .help { color: #6b7280; font-size: 0.85rem; margin: 0.35rem 0 0; }
+    .pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+    .pill-off { background: #f3f4f6; color: #4b5563; }
+    .pill-on { background: #dcfce7; color: #166534; }
+    .lock-note { color: #92400e; font-size: 0.8rem; margin-top: 0.35rem; }
+    .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+    .table-wrap { overflow-x: auto; }
+    input[type="number"], input[type="date"] {
+      width: 100%; padding: 0.6rem; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: 0.95rem; box-sizing: border-box;
+    }
+    .save-btn { background: #1d4ed8; }
+    .save-btn:hover { background: #1e40af; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="welcome-text">Welcome, {{ username }}</span>
+    <div class="header-nav">
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/championships" class="nav-link">Championships</a>
+      <a href="/past-winners" class="nav-link">Past Winners</a>
+      <a href="/nonlivegames" class="nav-link">Non Live Games</a>
+      <a href="/landing-settings" class="nav-link">Landing Settings</a>
+      <a href="/email-all" class="nav-link">Email All</a>
+      <a href="/analytics" class="nav-link">Analytics</a>
+      <a href="/growth" class="nav-link active">Growth</a>
+    </div>
+    <div class="header-right">
+      <a href="/logout" class="logout-btn">Logout</a>
+    </div>
+  </header>
+
+  <main class="content-container">
+    <h1>Growth</h1>
+
+    <div class="banner banner-info">
+      Every switch starts off. Nothing turns on unless you tick it and press Save.
+      Saving does not email players.
+    </div>
+
+    {% if notice %}
+    <div class="banner banner-ok">{{ notice }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="banner banner-bad">{{ error }}</div>
+    {% endif %}
+    {% if not loaded %}
+    <div class="banner banner-lock">
+      The player service did not load. The switches below are the safe off position.
+      Nothing has been changed.
+    </div>
+    {% endif %}
+    {% if any_forced %}
+    <div class="banner banner-lock">
+      A box marked “locked by server” is forced by the server environment. This page cannot change it.
+    </div>
+    {% endif %}
+
+    <section>
+      <div class="card">
+        <h3>Switches</h3>
+        <form method="post" action="/growth/settings">
+          <div class="switch-row">
+            {% for field in switches %}
+            <div class="switch-item">
+              <label for="{{ field.id }}">
+                <input type="checkbox" id="{{ field.id }}" name="{{ field.id }}" value="1"
+                  {% if field.value %}checked{% endif %}
+                  {% if field.forced %}disabled{% endif %}>
+                <span>{{ field.label }}</span>
+                {% if field.value %}<span class="pill pill-on">On</span>{% else %}<span class="pill pill-off">Off</span>{% endif %}
+              </label>
+              <p class="help">{{ field.help }}</p>
+              {% if field.forced %}
+              <p class="lock-note">Locked by server: {{ field.forced_note }}</p>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+
+          <h3 style="margin-top:1.5rem;">Numbers</h3>
+          <div class="number-grid">
+            {% for field in numbers %}
+            <div class="number-item">
+              <label for="{{ field.id }}">{{ field.label }}</label>
+              {% if field.kind == "number" %}
+              <input type="number" id="{{ field.id }}" name="{{ field.id }}"
+                value="{{ field.value }}" min="{{ field.min }}" max="{{ field.max }}" step="1"
+                {% if field.forced %}disabled{% endif %}>
+              {% elif field.kind == "choice" %}
+              <select id="{{ field.id }}" name="{{ field.id }}" {% if field.forced %}disabled{% endif %}>
+                {% for value, label in field.choices %}
+                <option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              {% elif field.kind == "weekday" %}
+              <select id="{{ field.id }}" name="{{ field.id }}" {% if field.forced %}disabled{% endif %}>
+                <option value="" {% if not field.value %}selected{% endif %}>Any weekday</option>
+                {% for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"] %}
+                <option value="{{ day }}" {% if field.value == day %}selected{% endif %}>{{ day|capitalize }}</option>
+                {% endfor %}
+              </select>
+              {% elif field.kind == "date" %}
+              <input type="date" id="{{ field.id }}" name="{{ field.id }}" value="{{ field.value }}"
+                {% if field.forced %}disabled{% endif %}>
+              {% endif %}
+              <p class="help">{{ field.help }}</p>
+              {% if field.forced %}
+              <p class="lock-note">Locked by server: {{ field.forced_note }}</p>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+
+          <div style="margin-top:1rem;">
+            <button type="submit" class="save-btn">Save growth settings</button>
+            <p class="help">Save writes these switches to the player service. It does not send email.</p>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section>
+      <div class="card">
+        <h3>Top inviters this UK week</h3>
+        {% if top_inviters %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Username</th><th>Invite first races</th></tr>
+            </thead>
+            <tbody>
+              {% for row in top_inviters %}
+              <tr><td>{{ row.username }}</td><td>{{ row.first_races }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="help">No invite first-races recorded this UK week.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section>
+      <div class="tool-grid">
+        <div class="card">
+          <h3>Revoke invite privileges</h3>
+          <p class="help">Blocks earning and sending invite bonuses. Does not delete the account and does not send email.</p>
+          <form method="post" action="/growth/revoke" onsubmit="return confirm('Revoke invite privileges for this player? Their account stays. No email is sent.');">
+            <div class="form-group">
+              <label for="revoke-username">Username</label>
+              <input type="text" id="revoke-username" name="username" autocomplete="off" spellcheck="false">
+            </div>
+            <button type="submit" class="danger-btn">Revoke</button>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Claw back unused bonus plays</h3>
+          <p class="help">Removes unused bonus plays for one player on one UK date. Does not delete the account and does not send email.</p>
+          <form method="post" action="/growth/clawback" onsubmit="return confirm('Claw back these unused bonus plays? No email is sent.');">
+            <div class="form-group">
+              <label for="claw-username">Username</label>
+              <input type="text" id="claw-username" name="username" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="form-group">
+              <label for="claw-date">UK date</label>
+              <input type="date" id="claw-date" name="date">
+            </div>
+            <div class="form-group">
+              <label for="claw-amount">Amount</label>
+              <input type="number" id="claw-amount" name="amount" min="1" max="10000" step="1">
+            </div>
+            <button type="submit" class="danger-btn">Claw back</button>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Invite graph</h3>
+          <p class="help">Who this player invited, and whether they landed, signed up, or finished a first race.</p>
+          <form method="get" action="/growth">
+            <div class="form-group">
+              <label for="lookup-username">Username</label>
+              <input type="text" id="lookup-username" name="lookup" value="{{ lookup }}" autocomplete="off" spellcheck="false">
+            </div>
+            <button type="submit" class="create-btn">Look up</button>
+          </form>
+          {% if graph_error %}
+          <p class="lock-note">{{ graph_error }}</p>
+          {% elif graph %}
+            {% if graph.rows %}
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Invited player</th><th>Status</th><th>When</th></tr>
+                </thead>
+                <tbody>
+                  {% for row in graph.rows %}
+                  <tr>
+                    <td>{{ row.username }}</td>
+                    <td>{{ row.status }}</td>
+                    <td>{{ row.when }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="help">No invites found for {{ graph.username }}.</p>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="card">
+        <h3>Counters</h3>
+        <p class="help">Today and this UK week. Empty days show as zero.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Event</th><th>Today</th><th>This UK week</th></tr>
+            </thead>
+            <tbody>
+              {% for event in counters.events %}
+              <tr>
+                <td>{{ event.label }}</td>
+                <td>{{ counters.today[event.key] }}</td>
+                <td>{{ counters.week[event.key] }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <h3 style="margin-top:1.25rem;">Last 7 UK days</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>UK date</th>
+                {% for event in counters.events %}
+                <th>{{ event.label }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for day in counters.days %}
+              <tr>
+                <td>{{ day.date }}</td>
+                {% for event in counters.events %}
+                <td>{{ day.counts[event.key] }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="card">
+        <h3>Recent admin actions</h3>
+        {% if actions %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>When</th><th>Action</th><th>Username</th><th>Detail</th></tr>
+            </thead>
+            <tbody>
+              {% for row in actions %}
+              <tr>
+                <td>{{ row.when }}</td>
+                <td>{{ row.action }}</td>
+                <td>{{ row.username }}</td>
+                <td>{{ row.detail }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="help">No recent admin actions.</p>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
