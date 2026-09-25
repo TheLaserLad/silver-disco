@@ -11,6 +11,7 @@ import gift from "../assets/gift.png";
 import FavoriteBalls from "./FavoriteBalls";
 import PlayerProfileModal from "./PlayerProfileModal";
 import { useState, useEffect, useMemo } from "react";
+import { loadSignedInPlayer } from "../helpers/session/player";
 import { ChevronDown, CirclePlus } from "lucide-react";
 import {
   AreaChart,
@@ -169,12 +170,9 @@ const PerformanceStats = () => {
   useEffect(() => {
     async function fetchStats() {
     try {
-      // Fetch user info
-      const userRes = await fetch(`${import.meta.env.VITE_SERVER_URL}/api/user/me`, {
-        credentials: "include",
-      });
-      const userJson = await userRes.json();
-      if (userJson.user) setUserData(userJson.user);
+      const player = await loadSignedInPlayer(import.meta.env.VITE_SERVER_URL);
+      if (player) setUserData({ user: { _id: player._id, username: player.username, email: player.email } });
+      if (!player?._id) return;
 
       // Fetch stats for logged-in usersendinf useremail
       const statsRes = await fetch(`${import.meta.env.VITE_PY_SERVER_URL}/api/user/stats`, {
@@ -183,7 +181,7 @@ const PerformanceStats = () => {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ email: userJson.user._id }),
+        body: JSON.stringify({ email: player._id }),
       });
       const data = await statsRes.json();
 
@@ -345,22 +343,17 @@ export default function RaceHistory() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const userRes = await fetch(`${import.meta.env.VITE_SERVER_URL}/api/user/me`, {
-          credentials: "include",
+        const player = await loadSignedInPlayer(import.meta.env.VITE_SERVER_URL);
+        const fetchedUserId = player?._id;
+
+        setUserData({
+          user: {
+            _id: fetchedUserId || "",
+            username: player?.username,
+            email: player?.email,
+          },
         });
-        const userJson = await userRes.json();
-        const fetchedUserId = userJson.user?._id;
-        
-        // Save user data
-        setUserData({ 
-          user: { 
-            _id: fetchedUserId, 
-            username: userJson.user?.username, 
-            email: userJson.user?.email 
-          } 
-        });
-        
-        // Set the ID to trigger the second effect
+
         if (fetchedUserId) setUserId(fetchedUserId);
         
       } catch (error) {

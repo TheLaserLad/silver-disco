@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import { playsLeftCopy, type GrowthChallenge, type GrowthPerson, type GrowthSnapshot } from "../../helpers/growth/flags";
 import { followPlayer, loadGrowthSnapshot, resetGrowthSnapshotCache, unfollowPlayer, unlockShareDay } from "../../helpers/growth/client";
+import { loadSignedInPlayer } from "../../helpers/session/player";
 
 const EMPTY: GrowthSnapshot = {
   playLedger: { enabled: false, playsLeft: null, limit: null, outOfPlays: false },
@@ -314,10 +315,9 @@ export function FollowButton({ userId }: { userId: string }) {
     const serverUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
     if (!serverUrl) return;
     let cancel = false;
-    fetch(`${serverUrl}/api/user/me`, { credentials: "include" })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!cancel && data?.user?._id) setViewerId(String(data.user._id));
+    loadSignedInPlayer(serverUrl)
+      .then((player) => {
+        if (!cancel && player?._id) setViewerId(player._id);
       })
       .catch(() => undefined);
     return () => {

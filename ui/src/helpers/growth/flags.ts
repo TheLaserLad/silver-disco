@@ -81,8 +81,26 @@ function flagNames(flag: GrowthFlag): Set<string> {
   return new Set([flag, `growth_${flag}`, ...FLAG_ALIASES[flag]]);
 }
 
+function explicitSwitch(record: Record<string, unknown>, flag: GrowthFlag): boolean | null {
+  const settings = asRecord(record.settings);
+  const pools = settings ? [record, settings] : [record];
+  for (const pool of pools) {
+    for (const key of FLAG_ALIASES[flag]) {
+      if (pool[key] === false) return false;
+    }
+  }
+  for (const pool of pools) {
+    for (const key of FLAG_ALIASES[flag]) {
+      if (pool[key] === true) return true;
+    }
+  }
+  return null;
+}
+
 /**
  * True only when this payload is about `flag` and that switch is on.
+ * An explicit off alias wins over a wrapper `enabled: true`, so a settings
+ * body cannot turn the ball picker or a growth screen on while the switch is off.
  * A play-ledger body with enabled:true must not turn challenges on.
  */
 export function featureEnabled(payload: unknown, flag: GrowthFlag): boolean {
@@ -90,13 +108,10 @@ export function featureEnabled(payload: unknown, flag: GrowthFlag): boolean {
   if (!record) return false;
   const flagName = typeof record.flag === "string" ? record.flag : "";
   if (flagName && !flagNames(flag).has(flagName)) return false;
+  const explicit = explicitSwitch(record, flag);
+  if (explicit !== null) return explicit;
   if (record.enabled === false) return false;
   if (record.enabled === true) return true;
-
-  for (const key of FLAG_ALIASES[flag]) {
-    if (record[key] === true) return true;
-    if (record[key] === false) return false;
-  }
   return false;
 }
 

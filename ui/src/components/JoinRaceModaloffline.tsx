@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Play, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
 import { readRaceResult } from "../helpers/growth/flags";
+import { loadSignedInPlayer, readUserIdCookie } from "../helpers/session/player";
 
 // Import images (keeping your existing imports)
 import Ball1 from "../assets/balls/1.png";
@@ -326,7 +327,10 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose, challengeId }) =
   
   // Data State
   const [selectedBall, setSelectedBall] = useState<number | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  // Google sign-in stores the id in a readable cookie. Do not wait on
+  // /api/user/me — that route 404s on the live player API and left the
+  // Watch button disabled after a ball was picked.
+  const [userId, setUserId] = useState<string | null>(() => readUserIdCookie());
   const [gameResult, setGameResult] = useState<OfflineGameResult | null>(null);
   const [dailyCap, setDailyCap] = useState<number | null>(null);
   const [noneLeft, setNoneLeft] = useState(false);
@@ -545,20 +549,15 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose, challengeId }) =
     };
   }, [step, playback?.src]);
 
-  // 1. Fetch User ID
+  // 1. Fetch User ID from /get_profile, /api/user/me, or the userId cookie.
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch(`${serverurl1}/api/user/me`, {
-          credentials: "include",
-        });
-        const data = await res.json();
-        if (data?.user?._id) setUserId(data.user._id);
-      } catch (err) {
-        console.error("Failed to fetch user:", err);
-      }
+    let cancel = false;
+    loadSignedInPlayer(serverurl1).then((player) => {
+      if (!cancel && player?._id) setUserId(player._id);
+    });
+    return () => {
+      cancel = true;
     };
-    fetchUser();
   }, [serverurl1]);
 
   // 2. Handle Join Logic
@@ -633,19 +632,22 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose, challengeId }) =
       <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
         <div className="grid grid-cols-5 gap-3 justify-items-center bg-[#1f1f1f] p-4">
           {balls.map((ball) => (
-            <div
+            <button
               key={ball.id}
+              type="button"
               onClick={() => setSelectedBall(ball.id)}
-              className={`rounded-xl overflow-hidden cursor-pointer border-2 transition transform hover:scale-105
+              aria-label={`Ball ${ball.id}`}
+              aria-pressed={selectedBall === ball.id}
+              className={`rounded-xl overflow-hidden cursor-pointer border-2 transition transform hover:scale-105 bg-transparent p-0
                 ${selectedBall === ball.id ? "border-indigo-500 shadow-lg shadow-indigo-500/20" : "border-transparent opacity-80 hover:opacity-100"}
               `}
             >
               <img
                 src={ball.img}
-                alt={`Ball ${ball.id}`}
-                className="object-cover w-16 h-16 rounded-lg" // Adjusted slightly for cleaner grid
+                alt=""
+                className="object-cover w-16 h-16 rounded-lg pointer-events-none"
               />
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -659,7 +661,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose, challengeId }) =
         </button>
         <button
           className={`px-6 py-2 rounded-full font-semibold text-white transition flex items-center gap-2
-            ${selectedBall && !noneLeft ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-700 cursor-not-allowed"}
+            ${selectedBall && userId && !noneLeft ? "bg-indigo-600 hover:bg-indigo-700" : "bg-gray-700 cursor-not-allowed"}
           `}
           disabled={!selectedBall || !userId || loading || noneLeft}
           onClick={handleJoin}
@@ -797,7 +799,7 @@ const renderVideoStep = () => (
   );
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md z-50 transition-opacity duration-300">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-md z-[80] transition-opacity duration-300">
       <div className="bg-[#1a1a1a] w-[90%] sm:w-[420px] rounded-2xl shadow-2xl overflow-hidden border border-gray-800 transition-all duration-300">
         
         {step === 'select' && renderSelectionStep()}

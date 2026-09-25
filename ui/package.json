@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test:growth": "node --experimental-strip-types --test src/helpers/growth/flags.test.ts",
+    "test:growth": "node --experimental-strip-types --test src/helpers/growth/flags.test.ts src/helpers/session/player.test.ts",
     "preview": "vite preview",
     "build:css": "tailwindcss -i ./src/index.css -o ./dist/output.css --minify"
   },

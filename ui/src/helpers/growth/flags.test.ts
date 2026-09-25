@@ -102,9 +102,17 @@ test("a play-ledger on switch does not open challenges or the race", () => {
   assert.equal(shouldStartChallenge(snap, "c1"), false);
 });
 
-test("alias false stays hidden even if another feature is on", () => {
-  assert.equal(featureEnabled({ growth_invites: false, enabled: true }, "invites"), true);
+test("alias false stays hidden even if a wrapper says enabled", () => {
+  assert.equal(featureEnabled({ growth_invites: false, enabled: true }, "invites"), false);
   assert.equal(featureEnabled({ invitesEnabled: false }, "invites"), false);
+  assert.equal(
+    featureEnabled({ enabled: true, settings: { playLedgerEnabled: false, challengesEnabled: false } }, "play_ledger"),
+    false,
+  );
+  assert.equal(
+    featureEnabled({ enabled: true, settings: { playLedgerEnabled: false, challengesEnabled: false } }, "challenges"),
+    false,
+  );
   const snap = growthSnapshotFromPayloads({
     ...liveOff,
     playLedger: { playLedgerEnabled: false, playsLeft: 4 },
@@ -129,11 +137,19 @@ test("challenge play response becomes a race only when a video link is present",
 test("flags-off path keeps the on-demand watching screen", () => {
   const modal = readFileSync(join(here, "../../components/JoinRaceModaloffline.tsx"), "utf8");
   const home = readFileSync(join(here, "../../pages/home/sections/View.tsx"), "utf8");
+  const header = readFileSync(join(here, "../../components/PinballRaceHeader.tsx"), "utf8");
+  const account = readFileSync(join(here, "../../components/account.tsx"), "utf8");
   assert.match(modal, /Watching the race/);
   assert.doesNotMatch(modal, /SkipForward/);
   assert.doesNotMatch(modal, /canSkipVideo/);
   assert.match(modal, /\/api\/games\/offline\/url/);
+  assert.match(modal, /loadSignedInPlayer/);
+  assert.match(modal, /z-\[80\]/);
+  assert.doesNotMatch(modal, /playLedger/);
   assert.match(home, /Play On-Demand Race/);
   assert.match(home, /setIsRaceModalOpen\(true\)/);
   assert.doesNotMatch(home, /bg-white/);
+  assert.match(header, /Log out/);
+  assert.match(account, /No user data found/);
+  assert.match(account, /Log out/);
 });
