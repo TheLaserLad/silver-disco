@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Play, SkipForward, Trophy, MapPin } from "lucide-react";
+import { X, Play, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
 
 // Import images (keeping your existing imports)
@@ -113,11 +113,11 @@ function youtubeId(raw: string): string | null {
   return null;
 }
 
-function withParams(raw: string, params: Record<string, string>): string {
+function withParams(raw: string, params: Record<string, string>, forceKeys: string[] = []): string {
   try {
     const url = new URL(raw);
     Object.entries(params).forEach(([key, value]) => {
-      if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+      if (forceKeys.includes(key) || !url.searchParams.has(key)) url.searchParams.set(key, value);
     });
     return url.toString();
   } catch {
@@ -135,7 +135,7 @@ function resolvePlayback(videoLink: string): Playback {
     return {
       kind: "iframe",
       provider: "youtube",
-      src: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${origin ? `&origin=${encodeURIComponent(origin)}` : ""}`,
+      src: `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&enablejsapi=1&playsinline=1&rel=0&modestbranding=1${origin ? `&origin=${encodeURIComponent(origin)}` : ""}`,
     };
   }
   const path = target.split("?")[0].toLowerCase();
@@ -144,14 +144,21 @@ function resolvePlayback(videoLink: string): Playback {
   return {
     kind: "iframe",
     provider: bunny ? "bunny" : "embed",
-    src: withParams(target, {
-      autoplay: bunny ? "true" : "1",
-      muted: bunny ? "true" : "1",
-      mute: "1",
-      preload: "true",
-      loop: "false",
-      playsinline: "1",
-    }),
+    src: withParams(
+      target,
+      {
+        autoplay: bunny ? "true" : "1",
+        muted: bunny ? "true" : "1",
+        mute: "1",
+        preload: "true",
+        loop: "false",
+        playsinline: "1",
+        // A saved mid-video position comes back paused behind Bunny's big Play button.
+        rememberPosition: "false",
+        rememberSettings: "false",
+      },
+      ["rememberPosition", "rememberSettings"]
+    ),
   };
 }
 
@@ -172,6 +179,7 @@ function postToPlayer(frame: HTMLIFrameElement | null) {
   send({ context: "player.js", version: "0.0.11", method: "unmute" });
   send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "ended" });
   send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "play" });
+  send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "pause" });
   send({ context: "player.js", version: "0.0.11", method: "addEventListener", value: "ready" });
 }
 
@@ -277,36 +285,14 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const startedRef = useRef(false);
+  const finishedRef = useRef(false);
   const videoOpenedAt = useRef(0);
 
   // Env vars
   const serverUrl = import.meta.env.VITE_PY_SERVER_URL;
   const serverurl1 = import.meta.env.VITE_SERVER_URL;
-  const [videoCountdown, setVideoCountdown] = useState(30);
-  const [canSkipVideo, setCanSkipVideo] = useState(false);
 
   const playback = gameResult?.video_link ? resolvePlayback(gameResult.video_link) : null;
-
-  // Countdown only runs while the race video is actually on screen
-  useEffect(() => {
-    if (step !== 'video') return;
-
-    setVideoCountdown(30);
-    setCanSkipVideo(false);
-
-    const timer = setInterval(() => {
-      setVideoCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setCanSkipVideo(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [step]);
 
   useEffect(() => {
     const py = import.meta.env.VITE_PY_SERVER_URL;
@@ -329,10 +315,12 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   }, []);
 
   const finishRace = () => {
+    if (finishedRef.current) return;
     const elapsed = Date.now() - videoOpenedAt.current;
     // Ignore the player's initial "ended/unstarted" burst. A real finish
     // either follows playback or arrives after the race has been on screen.
     if (!startedRef.current && elapsed < 1500) return;
+    finishedRef.current = true;
     setStep((current) => (current === "video" ? "result" : current));
   };
 
@@ -340,11 +328,13 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   useEffect(() => {
     if (step !== "video" || !playback) return;
     startedRef.current = false;
+    finishedRef.current = false;
     videoOpenedAt.current = Date.now();
 
     const markStarted = () => {
       startedRef.current = true;
     };
+    let resumeTimer = 0;
     const onMessage = (event: MessageEvent) => {
       let data: unknown = event.data;
       if (typeof data === "string") {
@@ -359,11 +349,24 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
       if (record.event === "ready") postToPlayer(iframeRef.current);
       if (messageMeansPlaying(record)) markStarted();
       const explicitEnd = record.event === "ended" || record.event === "finish";
-      if (explicitEnd || (messageMeansEnded(record) && startedRef.current)) finishRace();
+      if (explicitEnd || (messageMeansEnded(record) && startedRef.current)) {
+        finishRace();
+        return;
+      }
+      // Bunny's large Play button is its own paused-state control. If playback
+      // stalls, start it again so the race is not waiting on a tap.
+      if (record.event === "pause" && !finishedRef.current) {
+        window.clearTimeout(resumeTimer);
+        resumeTimer = window.setTimeout(() => {
+          if (!finishedRef.current) postToPlayer(iframeRef.current);
+        }, 400);
+      }
     };
     window.addEventListener("message", onMessage);
 
-    const kick = window.setInterval(() => postToPlayer(iframeRef.current), 700);
+    const kick = window.setInterval(() => {
+      if (!finishedRef.current) postToPlayer(iframeRef.current);
+    }, 700);
     const stopKicking = window.setTimeout(() => window.clearInterval(kick), 8000);
     postToPlayer(iframeRef.current);
 
@@ -389,6 +392,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
       window.removeEventListener("message", onMessage);
       window.clearInterval(kick);
       window.clearTimeout(stopKicking);
+      window.clearTimeout(resumeTimer);
     };
   }, [step, playback?.src]);
 
@@ -446,11 +450,6 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  // 3. Helper to finish video (Watch complete or Skip)
-  const handleVideoComplete = () => {
-    setStep('result');
   };
 
   // --- RENDER HELPERS ---
@@ -521,14 +520,6 @@ const renderVideoStep = () => (
          and pushing the footer away.
       */}
       <div className="flex-1 min-h-0 relative w-full flex items-center justify-center bg-black">
-        
-        <button 
-          onClick={onClose} 
-          className="absolute top-6 right-6 z-50 bg-black/40 hover:bg-red-600 p-2 rounded-full text-white transition backdrop-blur-sm"
-        >
-          <X size={24} />
-        </button>
-
         {playback?.kind === "video" ? (
           <video
             ref={videoRef}
@@ -536,9 +527,16 @@ const renderVideoStep = () => (
             autoPlay
             muted
             playsInline
-            className="w-full h-full bg-black"
+            className="w-full h-full bg-black pointer-events-none"
             onPlay={() => {
               startedRef.current = true;
+            }}
+            onPause={() => {
+              window.setTimeout(() => {
+                const video = videoRef.current;
+                if (!video || finishedRef.current || video.ended) return;
+                video.play().catch(() => undefined);
+              }, 400);
             }}
             onEnded={() => finishRace()}
           />
@@ -547,7 +545,7 @@ const renderVideoStep = () => (
             ref={iframeRef}
             src={playback.src}
             title="Race Video"
-            className="w-full h-full"
+            className="w-full h-full pointer-events-none"
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
             allowFullScreen
@@ -558,28 +556,12 @@ const renderVideoStep = () => (
         )}
       </div>
 
-      {/* Footer - Now guaranteed to stay visible because the video above can shrink */}
-      <div className="flex-none flex justify-between items-center p-4 border-t border-gray-800 bg-[#1a1a1a] z-50 h-16">
+      {/* Footer stays visible because the video above can shrink. No close or skip. */}
+      <div className="flex-none flex items-center p-4 border-t border-gray-800 bg-[#1a1a1a] z-50 h-16">
         <div className="text-gray-400 text-sm flex items-center gap-2">
             <span className="w-2 h-2 bg-red-500 rounded-full animate-ping"/>
-            Watch the race
+            Watching the race
         </div>
-        <button
-          onClick={handleVideoComplete}
-          disabled={!canSkipVideo}
-          className={`px-5 py-2 rounded-full font-medium flex items-center gap-2 transition ${
-            canSkipVideo 
-              ? "bg-gray-700 hover:bg-gray-600 text-white cursor-pointer" 
-              : "bg-gray-800 text-gray-500 cursor-not-allowed opacity-70"
-          }`}
-        >
-          {/* Show the countdown dynamically */}
-          {canSkipVideo ? (
-            <>Skip to results <SkipForward size={18} /></>
-          ) : (
-            `Skip in ${videoCountdown}s`
-          )}
-        </button>
       </div>
     </div>
   );
