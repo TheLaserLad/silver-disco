@@ -27,16 +27,16 @@ import b2 from "../assets/5balls/02.png";
 import b3 from "../assets/5balls/03.png";
 import b4 from "../assets/5balls/04.png";
 import b5 from "../assets/5balls/05.png";
-import b6 from "../assets/5balls/6.svg";
-import b7 from "../assets/5balls/7.svg";
-import b8 from "../assets/5balls/8.svg";
-import b9 from "../assets/5balls/9.svg";
-import b10 from "../assets/5balls/10.svg";
-import b11 from "../assets/5balls/11.svg";
-import b12 from "../assets/5balls/12.svg";
-import b13 from "../assets/5balls/13.svg";
-import b14 from "../assets/5balls/14.svg";
-import b15 from "../assets/5balls/15.svg";
+import b6 from "../assets/balls/6.png";
+import b7 from "../assets/balls/7.png";
+import b8 from "../assets/balls/8.png";
+import b9 from "../assets/balls/9.png";
+import b10 from "../assets/balls/10.png";
+import b11 from "../assets/balls/11.png";
+import b12 from "../assets/balls/12.png";
+import b13 from "../assets/balls/13.png";
+import b14 from "../assets/balls/14.png";
+import b15 from "../assets/balls/15.png";
 
 const ballImages: { [key: string]: string } = {
   "Ball 1": b1,
