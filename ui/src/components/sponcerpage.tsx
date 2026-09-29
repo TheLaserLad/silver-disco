@@ -3,11 +3,7 @@ import { FormEvent, useRef, useState } from "react";
 const SPONSORSHIPS = [
   {
     title: "Branded race",
-    text: "Your name on a race people enter on purpose",
-  },
-  {
-    title: "Your ball",
-    text: "One of the numbered balls in your colours",
+    text: "Your name on a race, or a series of races.",
   },
   {
     title: "Winner moment",
@@ -23,7 +19,7 @@ const SPONSORSHIPS = [
   },
   {
     title: "Championship",
-    text: "Your name on a season as it grows",
+    text: "Your name on a season as it grows. A weekly championship can also put your brand over the on-demand races.",
   },
 ] as const;
 
@@ -236,6 +232,10 @@ export default function SponsorPage() {
           font-size: 13px;
           line-height: 1.5;
           color: rgba(240,240,240,0.62);
+        }
+        .sp-act-text {
+          display: block;
+          text-align: left;
         }
 
         .sp-cta-wrap {
