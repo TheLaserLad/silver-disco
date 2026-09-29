@@ -444,7 +444,9 @@ const AccountScreen: React.FC = () => {
       {activeTab === "Notifications" && <NotificationSettings userId={userData._id} />}
 
       {/* Security */}
-      {activeTab === "Security" && <SecuritySettings id={userData._id} />}
+      {activeTab === "Security" && (
+        <SecuritySettings id={userData._id} username={userData.username} />
+      )}
 
       {/* Edit Profile Modal */}
       {showModal && (

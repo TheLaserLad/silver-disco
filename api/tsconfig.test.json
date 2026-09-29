@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "./",
+    "outDir": "dist"
+  },
+  "include": [
+    "helpers/auth/applyPasswordChange.ts",
+    "helpers/auth/applyPasswordChange.test.ts",
+    "helpers/auth/createJwt.ts",
+    "helpers/auth/verifyJwt.ts",
+    "controllers/user/changePassword.ts",
+    "controllers/user/changePassword.test.ts",
+    "models/User.ts",
+    "ts/ModelInterfaces/User.ts",
+    "routes/userRoutes.ts",
+    "controllers/user/getMe.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
