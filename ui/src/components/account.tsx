@@ -267,18 +267,26 @@ const AccountScreen: React.FC = () => {
       </header>
 
       {/* Tabs */}
-      <div className="flex bg-[#1c1c22] rounded-xl p-1 mb-8 w-full max-w-sm">
-        {["Profile", "Notifications", "Security"].map((tab) => (
-          <button
-            key={tab}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
-              activeTab === tab ? "bg-purple-600 text-white" : "text-gray-400 hover:bg-[#2b2b36]"
-            }`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </button>
-        ))}
+      <div role="tablist" className="flex bg-[#1c1c22] rounded-xl p-1 mb-8 w-full max-w-sm">
+        {["Profile", "Notifications", "Security"].map((tab) => {
+          const selected = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium ${
+                selected
+                  ? "bg-purple-600 text-white"
+                  : "bg-transparent text-gray-400 hover:bg-[#2b2b36]"
+              }`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab}
+            </button>
+          );
+        })}
       </div>
 
       {/* Profile Tab */}
@@ -444,7 +452,9 @@ const AccountScreen: React.FC = () => {
       {activeTab === "Notifications" && <NotificationSettings userId={userData._id} />}
 
       {/* Security */}
-      {activeTab === "Security" && <SecuritySettings id={userData._id} />}
+      {activeTab === "Security" && (
+        <SecuritySettings id={userData._id} username={userData.username} />
+      )}
 
       {/* Edit Profile Modal */}
       {showModal && (
