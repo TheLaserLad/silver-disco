@@ -44,6 +44,7 @@ import championship
 from championship import router as championship_router, country_flag, effective_streak, utc_now
 from auth import require_self
 from avatars import avatar_svg
+from sponsor_requests import register_sponsor_routes
 
 
 load_dotenv()
@@ -2343,6 +2344,15 @@ async def is_admin_live():
         return {"is_live":False}
     
     return {"is_live": islive}
+
+register_sponsor_routes(
+    app,
+    db=db,
+    require_login=require_login,
+    templates=templates,
+    format_timestamp=format_timestamp,
+)
+
 
 @app.get("/api/admin/download-database")
 async def download_database(
