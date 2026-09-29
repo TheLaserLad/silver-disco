@@ -44,6 +44,7 @@ import championship
 from championship import router as championship_router, country_flag, effective_streak, utc_now
 from auth import require_self
 from avatars import avatar_svg
+from sponsor_requests import clean_sponsor_request
 
 
 load_dotenv()
@@ -2343,6 +2344,57 @@ async def is_admin_live():
         return {"is_live":False}
     
     return {"is_live": islive}
+
+@app.post("/api/sponsor-requests")
+async def create_sponsor_request(request: Request):
+    """Save a public sponsorship request for the race desk. Does not send email."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="We could not read that request.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="We could not read that request.")
+    try:
+        doc = clean_sponsor_request(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    doc["createdAt"] = int(datetime.now(timezone.utc).timestamp() * 1000)
+    try:
+        await db.sponsor_requests.insert_one(doc)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Could not save the request.")
+    return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/sponsor-requests", response_class=HTMLResponse)
+async def sponsor_requests_page(request: Request):
+    try:
+        username = await require_login(request)
+    except HTTPException:
+        return RedirectResponse("/login")
+    raw = await db.sponsor_requests.find(
+        {},
+        {"_id": 0},
+    ).sort("createdAt", -1).limit(200).to_list(length=200)
+    rows = []
+    for row in raw:
+        rows.append({
+            "name": row.get("name", ""),
+            "brand": row.get("brand", ""),
+            "email": row.get("email", ""),
+            "sponsorship": row.get("sponsorship", ""),
+            "budget": row.get("budget", ""),
+            "note": row.get("note", ""),
+            "createdAt_formatted": format_timestamp(row.get("createdAt") or 0),
+        })
+    response = templates.TemplateResponse("sponsor_requests.html", {
+        "request": request,
+        "username": username,
+        "requests": rows,
+    })
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
 
 @app.get("/api/admin/download-database")
 async def download_database(

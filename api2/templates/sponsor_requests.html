@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Sponsor requests - Admin Dashboard</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    .sponsor-request-table td,
+    .sponsor-request-table td:last-child {
+      text-align: left;
+      vertical-align: top;
+    }
+    .sponsor-request-table .note {
+      white-space: pre-wrap;
+      min-width: 220px;
+      max-width: 360px;
+    }
+    .sponsor-request-table .email {
+      word-break: break-all;
+    }
+    .table-scroll {
+      overflow-x: auto;
+    }
+    .request-intro {
+      color: #4b5563;
+      margin-top: -0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="welcome-text">Welcome, {{ username }}</span>
+    <div class="header-nav">
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/championships" class="nav-link">Championships</a>
+      <a href="/past-winners" class="nav-link">Past Winners</a>
+      <a href="/nonlivegames" class="nav-link">Non Live Games</a>
+      <a href="/landing-settings" class="nav-link">Landing Settings</a>
+      <a href="/email-all" class="nav-link">Email All</a>
+      <a href="/sponsor-requests" class="nav-link active">Sponsor requests</a>
+      <a href="/analytics" class="nav-link">Analytics</a>
+    </div>
+    <div class="header-right">
+      <a href="/logout" class="logout-btn">Logout</a>
+    </div>
+  </header>
+
+  <main class="content-container">
+    <h1>Sponsor requests</h1>
+    <p class="request-intro">
+      Requests from the public Sponsor the Race page. This list stays on the race desk.
+    </p>
+
+    <section>
+      <div class="card table-scroll">
+        <table class="sponsor-request-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Name</th>
+              <th>Brand or company</th>
+              <th>Email</th>
+              <th>Sponsorship</th>
+              <th>Rough budget</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if requests %}
+              {% for r in requests %}
+                <tr>
+                  <td>{{ r.createdAt_formatted }}</td>
+                  <td>{{ r.name }}</td>
+                  <td>{{ r.brand }}</td>
+                  <td class="email">{{ r.email }}</td>
+                  <td>{{ r.sponsorship }}</td>
+                  <td>{{ r.budget if r.budget else "—" }}</td>
+                  <td class="note">{{ r.note }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="7" style="text-align: center; color: #6b7280; padding: 2rem;">
+                  No sponsor requests yet
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
