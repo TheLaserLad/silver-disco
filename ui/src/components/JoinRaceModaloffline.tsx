@@ -1,6 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Play, SkipForward, Trophy, MapPin } from "lucide-react";
 import { toast } from "react-toastify";
+
+import {
+  snapshotFromChampionship,
+  type ChampionshipEntrySnapshot,
+} from "../helpers/championship/entryNotice";
 
 // Import images (keeping your existing imports)
 import Ball1 from "../assets/balls/1.png";
@@ -32,6 +37,12 @@ const balls = importedBalls.map((img, index) => ({
 
 interface JoinRaceModalProps {
   onClose: () => void;
+  /**
+   * Fired once when this race created the player's championship entry.
+   * Held until the result step (or until the player closes early) so the
+   * popup does not cover the race video.
+   */
+  onChampionshipEntry?: (championship: ChampionshipEntrySnapshot) => void;
 }
 
 // Define the structure of the API response
@@ -40,11 +51,14 @@ interface OfflineGameResult {
   user_ball: string;
   user_position: string;
   user_points: number;
+  /** Present when api2 recorded the championship hook. Absent if that hook failed. */
+  newlyEntered?: boolean;
+  championship?: ChampionshipEntrySnapshot | null;
 }
 
 type ModalStep = 'select' | 'video' | 'result';
 
-const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
+const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose, onChampionshipEntry }) => {
   // UI State
   const [step, setStep] = useState<ModalStep>('select');
   const [loading, setLoading] = useState(false);
@@ -53,6 +67,30 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   const [selectedBall, setSelectedBall] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [gameResult, setGameResult] = useState<OfflineGameResult | null>(null);
+  const pendingEntry = useRef<ChampionshipEntrySnapshot | null>(null);
+  const onEntryRef = useRef(onChampionshipEntry);
+  onEntryRef.current = onChampionshipEntry;
+
+  const emitEntry = () => {
+    const snap = pendingEntry.current;
+    pendingEntry.current = null;
+    if (snap) onEntryRef.current?.(snap);
+  };
+
+  const requestClose = () => {
+    emitEntry();
+    onClose();
+  };
+
+  // Tab changes unmount this modal without a click. Still deliver a pending
+  // first-entry notice so it is not dropped on the floor.
+  useEffect(() => {
+    return () => {
+      const snap = pendingEntry.current;
+      pendingEntry.current = null;
+      if (snap) onEntryRef.current?.(snap);
+    };
+  }, []);
 
   // Refs
 
@@ -137,13 +175,20 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
       }
 
       const result: OfflineGameResult = await res.json();
-      
-      // Store result and switch to video view
+
+      // Prefer the API flag. Hold the snapshot until the result step so the
+      // popup does not cover the race video. A missing flag leaves this empty
+      // and Home falls back to the first-race check.
+      if (result.newlyEntered) {
+        pendingEntry.current = snapshotFromChampionship(result.championship);
+      }
+
       setGameResult(result);
       setStep('video'); 
       
-    } catch (err: any) {
-      toast.error(err?.message || "Error joining the race");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error joining the race";
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -152,6 +197,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
   // 3. Helper to finish video (Watch complete or Skip)
   const handleVideoComplete = () => {
     setStep('result');
+    emitEntry();
   };
 
   // --- RENDER HELPERS ---
@@ -163,7 +209,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
           <h2 className="text-white font-semibold text-lg">Join On-Demand Race</h2>
           <p className="text-gray-400 text-xs">Select your ball (1–15)</p>
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white transition">
+        <button onClick={requestClose} className="text-gray-400 hover:text-white transition">
           <X size={18} />
         </button>
       </div>
@@ -189,7 +235,7 @@ const JoinRaceModal: React.FC<JoinRaceModalProps> = ({ onClose }) => {
       </div>
 
       <div className="flex justify-end items-center p-4 border-t border-gray-800 bg-[#1a1a1a] space-x-4">
-        <button onClick={onClose} className="text-gray-400 hover:text-white transition text-sm font-medium">
+        <button onClick={requestClose} className="text-gray-400 hover:text-white transition text-sm font-medium">
           Cancel
         </button>
         <button
@@ -221,7 +267,7 @@ const renderVideoStep = () => (
       <div className="flex-1 min-h-0 relative w-full flex items-center justify-center bg-black">
         
         <button 
-          onClick={onClose} 
+          onClick={requestClose} 
           className="absolute top-6 right-6 z-50 bg-black/40 hover:bg-red-600 p-2 rounded-full text-white transition backdrop-blur-sm"
         >
           <X size={24} />
@@ -273,7 +319,7 @@ const renderVideoStep = () => (
     <>
       <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-[#1a1a1a]">
         <h2 className="text-white font-semibold text-lg">Race Results</h2>
-        <button onClick={onClose} className="text-gray-400 hover:text-white transition">
+        <button onClick={requestClose} className="text-gray-400 hover:text-white transition">
           <X size={18} />
         </button>
       </div>
@@ -318,7 +364,7 @@ const renderVideoStep = () => (
 
       <div className="p-4 border-t border-gray-800 bg-[#1a1a1a]">
         <button
-          onClick={onClose}
+          onClick={requestClose}
           className="w-full py-3 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition shadow-lg shadow-indigo-900/50"
         >
           Close

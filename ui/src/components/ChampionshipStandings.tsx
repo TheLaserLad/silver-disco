@@ -506,6 +506,9 @@ const ChampionshipStandings: React.FC<Props> = ({ userId }) => {
         <div className="mb-5">
           <div className="flex justify-between items-start gap-3 mb-2">
             <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#e6b325] mb-1">
+                Weekly Championship
+              </p>
               <h2 className="text-white font-semibold text-xl truncate">
                 {championship.name}
               </h2>

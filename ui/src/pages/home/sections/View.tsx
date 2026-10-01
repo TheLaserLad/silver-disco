@@ -7,6 +7,14 @@ import Leaderboard from "../../../components/Leaderboard";
 import Data from "../../../components/data";
 import AccountScreen from "../../../components/account";
 import JoinRaceModal from "../../../components/JoinRaceModaloffline";
+import ChampionshipEntryModal from "../../../components/ChampionshipEntryModal";
+import {
+  hasSeenChampionshipEntry,
+  markChampionshipEntrySeen,
+  shouldShowChampionshipEntry,
+  snapshotFromChampionship,
+  type ChampionshipEntrySnapshot,
+} from "../../../helpers/championship/entryNotice";
 
 type ActiveTab = "Home" | "Winners" | "Data" | "Profile";
 
@@ -19,6 +27,8 @@ interface UserState {
 const PinballRaceHome: React.FC = () => {
   // ✅ Load saved tab from localStorage, or default to "Home"
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
+  const [streamRaceOpen, setStreamRaceOpen] = useState(false);
+  const [entryNotice, setEntryNotice] = useState<ChampionshipEntrySnapshot | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const savedTab = localStorage.getItem("activeTab") as ActiveTab | null;
     return savedTab || "Home";
@@ -33,6 +43,26 @@ const PinballRaceHome: React.FC = () => {
   const [leaderboardTab, setLeaderboardTab] = useState<"AllRaces" | "Competitions">(
     "AllRaces"
   );
+
+  const presentEntry = (
+    snap: ChampionshipEntrySnapshot | null,
+    newlyEntered?: boolean,
+    racesThisChampionship?: number | null,
+  ) => {
+    if (!snap?.id) return;
+    if (
+      !shouldShowChampionshipEntry({
+        championshipId: snap.id,
+        newlyEntered,
+        racesThisChampionship,
+      })
+    ) {
+      return;
+    }
+    // Mark before paint so a second poll in the same turn cannot open it twice.
+    markChampionshipEntrySeen(snap.id);
+    setEntryNotice(snap);
+  };
 
   const handleTabChange = (tab: ActiveTab) => {
     setActiveTab(tab);
@@ -73,6 +103,48 @@ const PinballRaceHome: React.FC = () => {
 
     fetchUser();
   }, []);
+
+  // Live races finish on the server, not in this page's race-result response.
+  // Once the player's first race of the week is on the board, show the same
+  // popup — unless this browser already saw it, or an on-demand result is
+  // about to deliver newlyEntered itself.
+  useEffect(() => {
+    const userId = user._id;
+    // While the on-demand race modal is up, that response owns the popup.
+    // Pausing here also covers an in-flight poll: its cleanup sets cancelled.
+    const suppress = (isRaceModalOpen || streamRaceOpen) && activeTab === "Home";
+    if (!userId || suppress) return;
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const pyServerUrl = import.meta.env.VITE_PY_SERVER_URL;
+        if (!pyServerUrl) return;
+        const res = await fetch(
+          `${pyServerUrl}/api/championship/leaderboard?userId=${encodeURIComponent(userId)}&limit=1`,
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const snap = snapshotFromChampionship(data?.championship);
+        if (cancelled || !data?.active || !snap) return;
+        if (hasSeenChampionshipEntry(snap.id)) return;
+        const races =
+          typeof data?.player?.races === "number" ? data.player.races : null;
+        presentEntry(snap, undefined, races);
+      } catch (err) {
+        console.error("Failed to check championship entry:", err);
+      }
+    };
+
+    check();
+    const id = setInterval(check, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+    // presentEntry only writes state; the once-guard is localStorage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user._id, isRaceModalOpen, streamRaceOpen, activeTab]);
 // add a button that will call offline game when cliecked call join race model but the ball selected will be for offline game
 // that ball selected will be sent to offline game and the user will be able to play offline game with that ball
 // returning the url from the backend and opening it in a new tab
@@ -86,7 +158,10 @@ const PinballRaceHome: React.FC = () => {
       <main className="flex-1 p-4 space-y-6">
         {activeTab === "Home" && (
           <>
-            <LiveStreamCard />
+            <LiveStreamCard
+              onChampionshipEntry={(snap) => presentEntry(snap, true)}
+              onRaceModalChange={setStreamRaceOpen}
+            />
             <RaceDashboard
               username={user.username || ""}
               onViewStandings={() => {
@@ -101,8 +176,9 @@ const PinballRaceHome: React.FC = () => {
             Play On-Demand Race
         </button>
         {isRaceModalOpen && (
-        <JoinRaceModal 
+        <JoinRaceModal
           onClose={() => setIsRaceModalOpen(false)}
+          onChampionshipEntry={(snap) => presentEntry(snap, true)}
           />
         )}
           </>
@@ -115,6 +191,20 @@ const PinballRaceHome: React.FC = () => {
       </main>
 
       <PinballRaceFooter activeTab={activeTab} onTabChange={handleTabChange} />
+
+      {entryNotice && (
+        <ChampionshipEntryModal
+          championship={entryNotice}
+          onDismiss={() => setEntryNotice(null)}
+          onViewStandings={() => {
+            setEntryNotice(null);
+            setIsRaceModalOpen(false);
+            setStreamRaceOpen(false);
+            handleTabChange("Winners");
+            setLeaderboardTab("Competitions");
+          }}
+        />
+      )}
     </div>
   );
 };

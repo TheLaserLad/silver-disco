@@ -387,9 +387,9 @@ const AccountScreen: React.FC = () => {
                 </div>
 
                 {profile.currentStatus.championshipActive && (
-                  <div className="flex items-center justify-between border-t border-gray-800 mt-3 pt-3">
-                    <p className="text-xs text-gray-400">This week's championship</p>
-                    <p className="text-sm text-[#8b6fed] font-semibold">
+                  <div className="flex items-center justify-between gap-3 border-t border-gray-800 mt-3 pt-3">
+                    <p className="text-xs text-gray-400 min-w-0">This week's Weekly Championship</p>
+                    <p className="text-sm text-[#8b6fed] font-semibold shrink-0 text-right">
                       {profile.currentStatus.weeklyPoints} pts
                       {profile.currentStatus.weeklyRank > 0 &&
                         ` • rank #${profile.currentStatus.weeklyRank}`}
