@@ -1,12 +1,24 @@
 import React, { useEffect, useState } from "react";
 import JoinRaceModal from "../components/JoinRaceModaloffline";
+import type { ChampionshipEntrySnapshot } from "../helpers/championship/entryNotice";
 
-const LiveStreamCard: React.FC = () => {
+interface Props {
+  /** First-entry notice from an on-demand race started on this card. */
+  onChampionshipEntry?: (championship: ChampionshipEntrySnapshot) => void;
+  /** So Home can hold the entry popup until this race modal closes. */
+  onRaceModalChange?: (open: boolean) => void;
+}
+
+const LiveStreamCard: React.FC<Props> = ({ onChampionshipEntry, onRaceModalChange }) => {
   const [isLive, setIsLive] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState(false);
 
   const serverUrl = import.meta.env.VITE_PY_SERVER_URL || "http://localhost:3000";
+
+  useEffect(() => {
+    return () => onRaceModalChange?.(false);
+  }, [onRaceModalChange]);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -87,7 +99,10 @@ const LiveStreamCard: React.FC = () => {
               is pointer-events-none so only the button itself is clickable. */}
           <div className="absolute bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
             <button
-              onClick={() => setIsRaceModalOpen(true)}
+              onClick={() => {
+                setIsRaceModalOpen(true);
+                onRaceModalChange?.(true);
+              }}
               className="pointer-events-auto bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 px-6 rounded-full shadow-[0_0_15px_rgba(147,51,234,0.5)] transition-all transform hover:scale-105"
             >
               Play On-Demand Race
@@ -99,7 +114,11 @@ const LiveStreamCard: React.FC = () => {
       {/* Rendered outside the card so the card's overflow-hidden cannot clip it */}
       {isRaceModalOpen && (
         <JoinRaceModal
-          onClose={() => setIsRaceModalOpen(false)}
+          onClose={() => {
+            setIsRaceModalOpen(false);
+            onRaceModalChange?.(false);
+          }}
+          onChampionshipEntry={onChampionshipEntry}
         />
       )}
     </>

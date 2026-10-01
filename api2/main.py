@@ -403,13 +403,16 @@ async def process_off_game(game_id,user_id,ball_id):
         {"$push": {"racesPlayed": {"races": 1,"raceId": "offline", "user_ball": str(ball_id), "timestamp": int(datetime.utcnow().timestamp())}}}
     )
     # Feed the weekly championship, streak and career counters.
+    # An empty summary means the hook failed — the race result still returns,
+    # and the client can fall back instead of treating a miss as "not new".
+    champ_summary: Dict[str, Any] = {}
     try:
-        await championship.record_race_result(
+        champ_summary = await championship.record_race_result(
             user, rank if isinstance(rank, int) else None, user_points, game_type="offline"
         )
     except Exception as e:
         print(f"⚠️ championship hook failed for {user.get('username')}: {e}")
-    return (str(rank) if rank is not None else "10+"), user_points
+    return (str(rank) if rank is not None else "10+"), user_points, champ_summary
 # it will receive credentials and return a random offline game url
 @app.post("/api/games/offline/url")
 async def get_offline_game_url(
@@ -451,12 +454,23 @@ async def get_offline_game_url(
     if not offline_game:
         raise HTTPException(status_code=404, detail="No offline game available")
     # process_off_game already reports "10+" for a ball that did not place.
-    ranks, points = await process_off_game(offline_game[0]["_id"],game_data.userId,game_data.ball_id)
+    ranks, points, champ_summary = await process_off_game(
+        offline_game[0]["_id"], game_data.userId, game_data.ball_id
+    )
     secure_link = create_secure_video_link(offline_game[0]["video_url"], game_data.userId)
-    return {"video_link": secure_link,
-            "user_ball":"ball_"+ str(game_data.ball_id),
-            "user_position":ranks,
-            "user_points":points}
+    # Existing keys stay as they are. newlyEntered / championship are additive
+    # so older race-finish clients keep reading video_link, position and points.
+    body = {
+        "video_link": secure_link,
+        "user_ball": "ball_" + str(game_data.ball_id),
+        "user_position": ranks,
+        "user_points": points,
+    }
+    if "newlyEntered" in champ_summary:
+        body["newlyEntered"] = bool(champ_summary.get("newlyEntered"))
+    if champ_summary.get("newlyEntered") and champ_summary.get("championship"):
+        body["championship"] = champ_summary["championship"]
+    return body
 
 
 @app.post("/api/games/offline/delete")

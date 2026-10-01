@@ -602,6 +602,10 @@ async def record_race_result(
         "championshipPoints": 0,
         "bonusAwarded": 0,
         "championshipActive": False,
+        # False unless this call inserted the player's row for the live week.
+        # Callers that already return a race result can pass the flag through
+        # unchanged; older clients ignore the extra key.
+        "newlyEntered": False,
     }
 
     champ = await get_active_championship()
@@ -646,11 +650,20 @@ async def record_race_result(
         upsert=True,
     )
 
-    if res.upserted_id is not None:
+    # upserted_id is set only when $setOnInsert actually created the row —
+    # the first finished race of this championship, not every race after it.
+    newly_entered = _update_inserted(res)
+    summary["newlyEntered"] = newly_entered
+    if newly_entered:
+        summary["championship"] = _champ_entry_snapshot(champ)
         await db.users.update_one({"_id": user_id}, {"$inc": {"championshipsEntered": 1}})
 
     # ---- Feature 2: daily participation bonus, once per calendar day
     entry = await db.championship_entries.find_one({"championshipId": champ_id, "userId": uid})
+    if not entry:
+        # The insert was counted above. Skip bonus/rank rather than dropping
+        # newlyEntered by raising out of this hook.
+        return summary
     required = int(champ.get("dailyBonusRaces", DEFAULT_BONUS_RACES))
     bonus_points = int(champ.get("dailyBonusPoints", DEFAULT_BONUS_POINTS))
     races_today = int((entry.get("dailyRaceCounts") or {}).get(today, 0))
@@ -749,6 +762,30 @@ def _time_remaining(end_ms: int, now: datetime) -> Dict[str, int]:
         "minutes": int((total_seconds % 3600) // 60),
         "seconds": int(total_seconds % 60),
         "totalMs": int(remaining),
+    }
+
+
+def _update_inserted(res: Any) -> bool:
+    """True when an upsert created a document rather than updating one.
+
+    Motor/PyMongo expose this as upserted_id. Some driver versions only put
+    the inserted id on raw_result['upserted'], so check both.
+    """
+    if getattr(res, "upserted_id", None) is not None:
+        return True
+    raw = getattr(res, "raw_result", None) or {}
+    return bool(raw.get("upserted"))
+
+
+def _champ_entry_snapshot(champ: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact week payload for the first-entry popup. No new stored fields."""
+    return {
+        "id": str(champ["_id"]),
+        "name": champ.get("name") or "",
+        "startDate": champ.get("startDate"),
+        "endDate": champ.get("endDate"),
+        "prize": champ.get("prize") or "",
+        "sponsor": champ.get("sponsor") or "",
     }
 
 

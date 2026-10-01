@@ -122,7 +122,7 @@ const ChampionshipWidget: React.FC<Props> = ({ onViewAll }) => {
   if (!loaded) {
     return (
       <Card>
-        <h2 className="text-sm font-semibold mb-1 text-white">Championships</h2>
+        <h2 className="text-sm font-semibold mb-1 text-white">Weekly Championship</h2>
         <p className="text-xs text-gray-400 mb-3">Loading…</p>
       </Card>
     );
@@ -131,7 +131,7 @@ const ChampionshipWidget: React.FC<Props> = ({ onViewAll }) => {
   if (!active || !championship) {
     return (
       <Card>
-        <h2 className="text-sm font-semibold mb-1 text-white">Championships</h2>
+        <h2 className="text-sm font-semibold mb-1 text-white">Weekly Championship</h2>
         <p className="text-xs text-gray-400 mb-3">
           {nextUp ? `Next up: ${nextUp}` : "Currently Unavailable"}
         </p>
@@ -153,7 +153,10 @@ const ChampionshipWidget: React.FC<Props> = ({ onViewAll }) => {
 
   return (
     <Card>
-      {/* Title */}
+      {/* Umbrella label stays small. The admin week name is the headline. */}
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-[#e6b325] mb-1">
+        Weekly Championship
+      </p>
       <h2 className="text-sm font-semibold mb-1 text-white truncate">
         {championship.name}
       </h2>

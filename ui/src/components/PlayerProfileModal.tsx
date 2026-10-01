@@ -193,7 +193,7 @@ const PlayerProfileModal: React.FC<Props> = ({ userId, username, onClose }) => {
             {status?.championshipActive && (
               <div>
                 <p className="text-xs uppercase tracking-wider text-gray-500 mb-2">
-                  This week
+                  This week's Weekly Championship
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <Stat
