@@ -1,0 +1,357 @@
+/* GLOBAL_CHAT_V1 — STAMP-www-global-chat
+   Dark floating room. z-index stays under race modals (z-50) and the tab bar
+   so ball pick (1–15) and the race video keep the clicks. */
+
+.gc-root {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 40;
+  font-family: "Poppins", "Montserrat", sans-serif;
+}
+
+.gc-root.gc-corner {
+  bottom: 20px;
+}
+
+.gc-root.gc-stage {
+  position: absolute;
+}
+
+.gc-bubble {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid #3a3a44;
+  background: #2a2a32;
+  color: #f4f4f5;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.gc-bubble:hover {
+  background: #34343e;
+}
+
+.gc-bubble:focus-visible,
+.gc-icon-btn:focus-visible,
+.gc-send:focus-visible,
+.gc-input:focus-visible,
+.gc-text-btn:focus-visible,
+.gc-link-btn:focus-visible {
+  outline: 2px solid #a855f7;
+  outline-offset: 2px;
+}
+
+.gc-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #a855f7;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #0e0e12;
+}
+
+.gc-panel {
+  position: absolute;
+  right: 0;
+  bottom: 68px;
+  width: min(320px, calc(100vw - 32px));
+  height: min(420px, 46vh, max(180px, calc(100dvh - 28rem)));
+  background: #1c1c22;
+  border: 1px solid #2a2a2a;
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The root shrink-wraps to the bubble, so the panel width must not be a
+   percentage of that root. Use the viewport (and cap it) instead. */
+.gc-root.gc-stage .gc-panel {
+  width: min(300px, calc(100vw - 32px));
+}
+
+.gc-panel.gc-short {
+  height: auto;
+  max-height: none;
+}
+
+@media (max-width: 720px) {
+  .gc-panel {
+    /* Stay in the lower corner, clear of the home race video on a phone. */
+    height: min(220px, 34vh);
+  }
+}
+
+.gc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  flex: none;
+}
+
+.gc-title {
+  color: #fafafa;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.gc-sub {
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.gc-status {
+  color: #c4b5fd;
+  font-size: 11px;
+}
+
+.gc-icon-btn {
+  border: 0;
+  background: transparent;
+  color: #d4d4d8;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.gc-icon-btn:hover {
+  background: #2a2a32;
+  color: #fff;
+}
+
+.gc-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gc-empty,
+.gc-loading,
+.gc-banned {
+  color: #a1a1aa;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: auto;
+  text-align: center;
+  padding: 12px;
+}
+
+.gc-banned {
+  color: #fde68a;
+}
+
+.gc-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.gc-msg-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+}
+
+.gc-user {
+  color: #d8b4fe;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.gc-msg.mine .gc-user {
+  color: #e9d5ff;
+}
+
+.gc-time {
+  color: #71717a;
+  font-size: 10px;
+}
+
+.gc-text {
+  color: #e4e4e7;
+  font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.gc-report {
+  border: 0;
+  background: transparent;
+  color: #a78bfa;
+  font-size: 11px;
+  padding: 0;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.gc-report:hover {
+  color: #ddd6fe;
+}
+
+.gc-error {
+  color: #fca5a5;
+  font-size: 12px;
+  padding: 0 12px 4px;
+  flex: none;
+}
+
+.gc-compose {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid #2a2a2a;
+  flex: none;
+}
+
+.gc-input {
+  flex: 1;
+  min-width: 0;
+  background: #121218;
+  border: 1px solid #2a2a2a;
+  color: #fafafa;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.gc-input::placeholder {
+  color: #71717a;
+}
+
+.gc-input:disabled {
+  opacity: 0.6;
+}
+
+.gc-send,
+.gc-link-btn,
+.gc-text-btn {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.gc-send {
+  background: #6d28d9;
+  color: #fff;
+  padding: 8px 14px;
+}
+
+.gc-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gc-send:not(:disabled):hover {
+  background: #7c3aed;
+}
+
+.gc-muted {
+  padding: 12px;
+  border-top: 1px solid #2a2a2a;
+  color: #fde68a;
+  font-size: 12px;
+  line-height: 1.4;
+  flex: none;
+}
+
+.gc-gate {
+  padding: 16px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gc-gate p {
+  color: #d4d4d8;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gc-gate-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gc-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  background: #6d28d9;
+  color: #fff;
+  padding: 8px 12px;
+}
+
+.gc-link-btn.secondary {
+  background: transparent;
+  color: #e9d5ff;
+  border: 1px solid #3f3f46;
+}
+
+.gc-confirm {
+  margin: 8px 12px 12px;
+  padding: 10px;
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  background: #14141a;
+  flex: none;
+}
+
+.gc-confirm strong {
+  display: block;
+  color: #fafafa;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.gc-confirm p {
+  color: #a1a1aa;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.gc-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.gc-text-btn {
+  background: #3f3f46;
+  color: #fafafa;
+  padding: 6px 10px;
+}
+
+.gc-text-btn.primary {
+  background: #6d28d9;
+}

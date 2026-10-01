@@ -16,6 +16,7 @@ import session from "express-session";
 import { Server } from "socket.io";
 import leaderboardRoutes from "./routes/leaderboardRoutes";
 import userRoutes from "./routes/userRoutes";
+import chatRoutes from "./routes/chat";
 
 
 
@@ -59,6 +60,7 @@ app.use(express.static(path.join(process.cwd(), "uploads/")));
 app.use("/unrestricted", unrestricted);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/user", userRoutes);
+app.use("/chat", chatRoutes);
 
 
 for (let i = 0; i < Routes.length; i++) {
