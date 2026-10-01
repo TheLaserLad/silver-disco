@@ -1,0 +1,188 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Global chat</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    body { background: #121216; color: #e4e4e7; }
+    header { background: #1c1c22; border-bottom: 1px solid #2a2a2a; }
+    h1, h3 { color: #fafafa; }
+    .hint, .meta { color: #a1a1aa; font-size: 0.85rem; }
+    .chat-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1rem; }
+    @media (max-width: 960px) { .chat-grid { grid-template-columns: 1fr; } }
+    .panel {
+      background: #1c1c22;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .row {
+      padding: 0.65rem 0;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .row:last-child { border-bottom: 0; }
+    .who { color: #d8b4fe; font-weight: 700; }
+    .text { color: #e4e4e7; word-break: break-word; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.45rem; align-items: center; }
+    .actions form { display: inline-flex; gap: 0.35rem; align-items: center; }
+    button, .actions select, .search input {
+      background: #27272a;
+      color: #fafafa;
+      border: 1px solid #3f3f46;
+      border-radius: 8px;
+      padding: 0.35rem 0.6rem;
+    }
+    button { cursor: pointer; font-weight: 600; }
+    button.danger { background: #7f1d1d; border-color: #7f1d1d; }
+    button.quiet { background: transparent; }
+    .banner { padding: 0.6rem 0.8rem; border-radius: 8px; margin-bottom: 1rem; }
+    .banner.ok { background: #14532d; color: #dcfce7; }
+    .banner.bad { background: #7f1d1d; color: #fee2e2; }
+    .empty { color: #a1a1aa; padding: 0.5rem 0; }
+    .pill { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 999px; background: #3b0764; color: #e9d5ff; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="welcome-text">Welcome, {{ username }}</span>
+    <div class="header-nav">
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/championships" class="nav-link">Championships</a>
+      <a href="/past-winners" class="nav-link">Past Winners</a>
+      <a href="/nonlivegames" class="nav-link">Non Live Games</a>
+      <a href="/landing-settings" class="nav-link">Landing Settings</a>
+      <a href="/email-all" class="nav-link">Email All</a>
+      <a href="/analytics" class="nav-link">Analytics</a>
+      <a href="/chat" class="nav-link active">Chat</a>
+    </div>
+    <div class="header-right">
+      <a href="/logout" class="logout-btn">Logout</a>
+    </div>
+  </header>
+
+  <main class="content-container">
+    <h1>Global chat</h1>
+    <p class="hint">One site-wide room. Mute and ban apply to chat only — players can still race.</p>
+
+    {% if notice %}<div class="banner ok">{{ notice }}</div>{% endif %}
+    {% if error %}<div class="banner bad">{{ error }}</div>{% endif %}
+
+    <div class="panel">
+      <h3>Find a player</h3>
+      <form class="search" method="get" action="/chat">
+        <input name="q" value="{{ q }}" placeholder="Username" />
+        <button type="submit">Search</button>
+      </form>
+      {% if q and not matches %}
+        <p class="empty">No player matched “{{ q }}”.</p>
+      {% endif %}
+      {% for user in matches %}
+        <div class="row">
+          <span class="who">{{ user.username }}</span>
+          <span class="pill">{{ user.state }}</span>
+          <div class="actions">
+            <form method="post" action="/chat/mute">
+              <input type="hidden" name="username" value="{{ user.username }}" />
+              <input type="hidden" name="q" value="{{ q }}" />
+              <select name="duration">
+                <option value="1h">1 hour</option>
+                <option value="24h" selected>24 hours</option>
+                <option value="7d">7 days</option>
+                <option value="indefinite">Until unmuted</option>
+              </select>
+              <button type="submit">Mute</button>
+            </form>
+            <form method="post" action="/chat/ban">
+              <input type="hidden" name="username" value="{{ user.username }}" />
+              <input type="hidden" name="q" value="{{ q }}" />
+              <button class="danger" type="submit">Ban from chat</button>
+            </form>
+            <form method="post" action="/chat/unmute">
+              <input type="hidden" name="username" value="{{ user.username }}" />
+              <input type="hidden" name="q" value="{{ q }}" />
+              <button class="quiet" type="submit">Unmute</button>
+            </form>
+            <form method="post" action="/chat/unban">
+              <input type="hidden" name="username" value="{{ user.username }}" />
+              <input type="hidden" name="q" value="{{ q }}" />
+              <button class="quiet" type="submit">Unban</button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="chat-grid">
+      <section class="panel">
+        <h3>Recent messages</h3>
+        {% if messages %}
+          {% for m in messages %}
+            <div class="row">
+              <div><span class="who">{{ m.username }}</span> <span class="meta">{{ m.when }}</span></div>
+              <div class="text">{{ m.text }}</div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <p class="empty">No messages yet.</p>
+        {% endif %}
+      </section>
+
+      <div>
+        <section class="panel">
+          <h3>Reports</h3>
+          {% if reports %}
+            {% for r in reports %}
+              <div class="row">
+                <div class="meta">{{ r.when }} · reported by {{ r.reporterUsername }}</div>
+                <div><span class="who">{{ r.reportedUsername }}</span></div>
+                <div class="text">{{ r.text }}</div>
+                <div class="actions">
+                  <form method="post" action="/chat/mute">
+                    <input type="hidden" name="username" value="{{ r.reportedUsername }}" />
+                    <input type="hidden" name="report_id" value="{{ r.id }}" />
+                    <select name="duration">
+                      <option value="1h">1 hour</option>
+                      <option value="24h" selected>24 hours</option>
+                      <option value="7d">7 days</option>
+                      <option value="indefinite">Until unmuted</option>
+                    </select>
+                    <button type="submit">Mute</button>
+                  </form>
+                  <form method="post" action="/chat/ban">
+                    <input type="hidden" name="username" value="{{ r.reportedUsername }}" />
+                    <input type="hidden" name="report_id" value="{{ r.id }}" />
+                    <button class="danger" type="submit">Ban from chat</button>
+                  </form>
+                  <form method="post" action="/chat/reports/dismiss">
+                    <input type="hidden" name="report_id" value="{{ r.id }}" />
+                    <button class="quiet" type="submit">Dismiss</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty">No open reports.</p>
+          {% endif %}
+        </section>
+
+        <section class="panel">
+          <h3>Muted or banned</h3>
+          {% if sanctions %}
+            {% for s in sanctions %}
+              <div class="row">
+                <span class="who">{{ s.username }}</span>
+                <span class="pill">{{ s.type }}</span>
+                <div class="meta">{{ s.until }}{% if s.by %} · {{ s.by }}{% endif %}</div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="empty">Nobody is muted or banned.</p>
+          {% endif %}
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

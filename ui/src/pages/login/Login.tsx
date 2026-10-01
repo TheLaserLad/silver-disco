@@ -10,6 +10,7 @@ import { FaGoogle, FaTwitch } from "react-icons/fa";
 import { SiTiktok } from "react-icons/si";
 import logo from "../../assets/orilogo.png";
 import Footer from "../../components/Footer";
+import GlobalChat from "../../components/GlobalChat";
 import HowToPlay from "../../components/howtoplay";
 import HowPointsWork from "../../components/howpointsworks";
 import SponsorPage from "../../components/sponcerpage";
@@ -31,6 +32,18 @@ const HomePage = () => {
   const serverUrl: string | undefined = import.meta.env.VITE_SERVER_URL;
   const navigate = useNavigate();
   const [timeUntilRace, setTimeUntilRace] = useState<string>("--:--:--");
+
+  useEffect(() => {
+    const onAuth = (event: Event) => {
+      const mode = (event as CustomEvent<"login" | "signup">).detail;
+      if (mode === "login" || mode === "signup") {
+        setAuthMode(mode);
+        event.preventDefault();
+      }
+    };
+    window.addEventListener("pinballrace:open-auth", onAuth);
+    return () => window.removeEventListener("pinballrace:open-auth", onAuth);
+  }, []);
 
 useEffect(() => {
   const updateTimer = () => {
@@ -640,6 +653,8 @@ const getCountdownToRace = (timestamp: number | null) => {
 
       {/* FOOTER */}
       <Footer />
+      {/* Guests get the gate only — no feed. GLOBAL_CHAT_V1 */}
+      <GlobalChat dock="corner" />
     </div>
   );
 };

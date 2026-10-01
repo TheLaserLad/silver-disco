@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-test",
+    "rootDir": "helpers/chat",
+    "noEmit": false
+  },
+  "include": [
+    "helpers/chat/blockedWords.ts",
+    "helpers/chat/chatRules.ts",
+    "helpers/chat/chatRules.test.ts"
+  ]
+}

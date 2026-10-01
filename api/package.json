@@ -7,7 +7,7 @@
     "build": "npx tsc",
     "start": "node dist/index.js",
     "dev": "concurrently \"npx tsc --watch\" \"nodemon -q dist/index.js\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsc -p tsconfig.chat-test.json && node --test dist-test/chatRules.test.js"
   },
   "keywords": [],
   "author": "",

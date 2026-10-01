@@ -1,6 +1,7 @@
 import axios from "axios";
 import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
+import GlobalChat from "../../components/GlobalChat";
 
 const Home = () => {
   const serverUrl: string = import.meta.env.VITE_SERVER_URL;
@@ -19,7 +20,11 @@ const Home = () => {
 
   return (
     <div>
+      {/* GLOBAL_CHAT_V1 — stays mounted across Home tabs and on-demand play.
+          Live www deploy is a splice onto the patched bundle, never a full ui/dist overwrite.
+          Stamp: STAMP-www-global-chat */}
       <Outlet />
+      <GlobalChat dock="above-footer" />
     </div>
   );
 };

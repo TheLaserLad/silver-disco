@@ -19,7 +19,20 @@ import PrivacyPolicy from "./pages/privacy/PrivacyPolicy";
 import Leaderboard from "./pages/leaderboard/Leaderboard";
 import Viewleaderboard from "./pages/leaderboard/sections/View";
 
+const devChatPreview = import.meta.env.DEV
+  ? [
+      {
+        path: "/dev/chat-preview",
+        lazy: async () => {
+          const mod = await import("./pages/dev/ChatPreview");
+          return { Component: mod.default };
+        },
+      },
+    ]
+  : [];
+
 const router = createBrowserRouter([
+  ...devChatPreview,
   {
     path: "/abc",
     element: <Root />,
